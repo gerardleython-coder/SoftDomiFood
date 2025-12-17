@@ -2,12 +2,23 @@
 
 Esta carpeta contiene toda la documentación del proyecto organizada por categorías.
 
+## 📋 Documentos Principales
+
+⚠️ **Nota sobre Entregables:** Los siguientes documentos están disponibles únicamente en la carpeta [../entregables/](../entregables/):
+- `BUSINESS_CONTEXT_IRIS.md` → [../entregables/Business_context_iris.md](../entregables/Business_context_iris.md)
+- `REFINED_BACKLOG.md` → [../entregables/REFINED_BACKLOG.md](../entregables/REFINED_BACKLOG.md)
+- `TEST_PLAN.md` → [../entregables/TEST_PLAN.md](../entregables/TEST_PLAN.md)
+- `TEST_CASES.md` → [../entregables/TEST_CASES.md](../entregables/TEST_CASES.md)
+- `Hallazgos As-Is.pdf` → [../entregables/Hallazgos As-Is.pdf](../entregables/Hallazgos%20As-Is.pdf)
+- `MEJORAS.md` → [../entregables/MEJORAS.md](../entregables/MEJORAS.md)
+
+Estos archivos fueron consolidados para evitar duplicación.
+
 ## 📁 Estructura de Documentación
 
 ### 🏗️ Architecture (`architecture/`)
 Documentación de arquitectura, diseño y contexto del negocio:
-- `BUSINESS_CONTEXT_IRIS.md` - Contexto de negocio y alcance del proyecto
-- `REFINED_BACKLOG.md` - Backlog refinado del proyecto
+- `Construccion_HU_Atlas.md` - Construcción de Historias de Usuario con framework Atlas
 - `user_stories.md` - Historias de usuario
 - `AS-IS_Radiografia.txt` - Análisis del estado actual
 - `SISTEMA_RESENAS_COMPLETO.md` - Sistema completo de reseñas
@@ -30,8 +41,6 @@ Documentación de correcciones y bugs resueltos:
 
 ### 🧪 Testing (`testing/`)
 Documentación de pruebas, auditorías y QA:
-- `TEST_PLAN.md` - Plan de pruebas
-- `TEST_CASES.md` - Casos de prueba
 - `AUDIT_REPORT_GENERAL.md` - Reporte de auditoría general
 - `AUDIT_REPORT_API.md` - Reporte de auditoría de la API
 - `AUDIT_REPORT_WORKER.md` - Reporte de auditoría del worker
@@ -48,9 +57,10 @@ Documentación de pruebas, auditorías y QA:
 ## 📚 Navegación Rápida
 
 - **¿Nuevo en el proyecto?** → Comienza con [`setup/DESARROLLO-LOCAL.md`](setup/DESARROLLO-LOCAL.md)
-- **¿Necesitas contexto de negocio?** → Lee [`architecture/BUSINESS_CONTEXT_IRIS.md`](architecture/BUSINESS_CONTEXT_IRIS.md)
-- **¿Vas a ejecutar pruebas?** → Consulta [`testing/TEST_PLAN.md`](testing/TEST_PLAN.md)
+- **¿Necesitas contexto de negocio?** → Ver [Entregables - Business Context](../entregables/Business_context_iris.md)
+- **¿Vas a ejecutar pruebas?** → Consulta [Entregables - TEST_PLAN.md](../entregables/TEST_PLAN.md)
 - **¿Problemas conocidos?** → Revisa la carpeta [`fixes/`](fixes/)
+- **¿Resumen de mejoras?** → Lee [Entregables - MEJORAS.md](../entregables/MEJORAS.md)
 
 ## 🔄 Mantenimiento de Documentación
 

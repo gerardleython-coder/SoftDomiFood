@@ -14,6 +14,7 @@
 - [Stack Tecnológico](#-stack-tecnológico)
 - [Guía de Inicio Rápido](#-guía-de-inicio-rápido)
 - [Calidad y Testing](#-calidad-y-testing)
+- [Entregables del Proyecto](#-entregables-del-proyecto)
 - [Documentos Clave y Gobernanza](#-documentos-clave-y-gobernanza)
 - [Configuración Avanzada](#-configuración-avanzada)
 - [Credenciales por Defecto](#-credenciales-por-defecto)
@@ -333,7 +334,25 @@ Para más información sobre testing, consulta: [qa_automated/README.md](./qa_au
 
 ---
 
-## 📖 Documentos Clave y Gobernanza
+## � Entregables del Proyecto
+
+La carpeta **[entregables/](entregables/)** contiene todos los documentos principales del proyecto listos para entrega:
+
+| Documento | Descripción |
+|-----------|-------------|
+| [Business_context_iris.md](entregables/Business_context_iris.md) | Contexto de negocio según metodología IRIS |
+| [Hallazgos As-Is.pdf](entregables/Hallazgos%20As-Is.pdf) | Análisis del estado actual del sistema |
+| [REFINED_BACKLOG.md](entregables/REFINED_BACKLOG.md) | Backlog refinado con historias de usuario |
+| [TEST_PLAN.md](entregables/TEST_PLAN.md) | Plan completo de pruebas del proyecto |
+| [TEST_CASES.md](entregables/TEST_CASES.md) | Casos de prueba detallados |
+| [Construccion_HU_Atlas.md](entregables/Construccion_HU_Atlas.md) | Construcción de HU con framework Atlas |
+| [MEJORAS.md](entregables/MEJORAS.md) | Resumen de todas las mejoras aplicadas (37 archivos reorganizados) |
+
+Ver [entregables/README.md](entregables/README.md) para más detalles.
+
+---
+
+## �📖 Documentos Clave y Gobernanza
 
 ### Gobernanza y Protocolos
 

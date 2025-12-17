@@ -4,9 +4,13 @@ import os
 import uuid
 from typing import Dict, Any, Optional
 from datetime import datetime
+from services.secrets_manager import get_rabbitmq_url  # HU-05
 
-RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://admin:admin123@localhost:5672/")
 QUEUE_NAME = "order_queue"
+
+def _get_rabbitmq_url() -> str:
+    """Obtener RABBITMQ_URL con auditoría (HU-05)"""
+    return get_rabbitmq_url()
 
 # Variables globales para conexión persistente
 _connection: Optional[aio_pika.RobustConnection] = None
@@ -17,9 +21,10 @@ async def get_connection() -> aio_pika.RobustConnection:
     global _connection
     if _connection is None or _connection.is_closed:
         try:
-            _connection = await aio_pika.connect_robust(RABBITMQ_URL)
+            rabbitmq_url = _get_rabbitmq_url()
+            _connection = await aio_pika.connect_robust(rabbitmq_url)
             # Ocultar contraseña en logs
-            safe_url = RABBITMQ_URL.split('@')[0].split(':')[0] + '://****@' + '@'.join(RABBITMQ_URL.split('@')[1:]) if '@' in RABBITMQ_URL else RABBITMQ_URL
+            safe_url = rabbitmq_url.split('@')[0].split(':')[0] + '://****@' + '@'.join(rabbitmq_url.split('@')[1:]) if '@' in rabbitmq_url else rabbitmq_url
             print(f"✅ Conexión RabbitMQ establecida: {safe_url}")
         except Exception as e:
             print(f"❌ Error conectando a RabbitMQ: {e}")
@@ -72,7 +77,7 @@ async def publish_order(order_data: Dict[str, Any]):
     """
     try:
         channel = await get_channel()
-        
+
         # Formatear mensaje para el worker
         # Asegurar que los items tengan el formato correcto (productId, quantity, price)
         items = []
@@ -82,7 +87,7 @@ async def publish_order(order_data: Dict[str, Any]):
                 "quantity": int(item.get("quantity", 0)),
                 "price": float(item.get("price", 0))
             })
-        
+
         message = {
             "orderId": str(order_data.get("id", "")),
             "userId": str(order_data.get("userId", "")),
@@ -91,7 +96,7 @@ async def publish_order(order_data: Dict[str, Any]):
             "total": float(order_data.get("total", 0)),
             "notes": order_data.get("notes")
         }
-        
+
         # Publicar mensaje (convertir datetime y UUID a formatos serializables)
         message_body = json.dumps(message, default=json_serial)
         await channel.default_exchange.publish(
@@ -101,7 +106,7 @@ async def publish_order(order_data: Dict[str, Any]):
             ),
             routing_key=QUEUE_NAME
         )
-        
+
         print(f"✅ Mensaje publicado a {QUEUE_NAME}: {message.get('orderId')}")
         return True
     except aio_pika.exceptions.ConnectionClosed:
@@ -127,4 +132,3 @@ async def publish_order(order_data: Dict[str, Any]):
         import traceback
         traceback.print_exc()
         raise
-

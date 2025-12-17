@@ -6,11 +6,15 @@ from typing import Optional, Dict, Any
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from services.database_service import get_user_by_email, create_user
+from services.secrets_manager import get_jwt_secret  # HU-05
 
 # Configuración JWT
-SECRET_KEY = os.getenv("JWT_SECRET", "your-super-secret-jwt-key-change-in-production")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_DAYS = 7
+
+def _get_secret_key() -> str:
+    """Obtener JWT secret con auditoría (HU-05)"""
+    return get_jwt_secret()
 
 # OAuth2 scheme
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
@@ -29,14 +33,15 @@ def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
-    """Crear token JWT"""
+    """Crear JWT token con secret auditado (HU-05)"""
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
         expire = datetime.utcnow() + timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS)
     to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    # HU-05: Usar SecretsManager con auditoría
+    encoded_jwt = jwt.encode(to_encode, _get_secret_key(), algorithm=ALGORITHM)
     return encoded_jwt
 
 def decode_token(token: str) -> Optional[Dict[str, Any]]:
@@ -66,6 +71,6 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
     )
     # Reusa la función de verificación de token
     user_payload = verify_token(token, credentials_exception)
-    
+
     # Devuelve el payload del usuario (ej: email, id, roles)
     return user_payload
