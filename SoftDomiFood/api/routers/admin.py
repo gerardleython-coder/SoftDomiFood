@@ -267,3 +267,28 @@ async def admin_delete_coupon(coupon_id: str):
     if not ok:
         raise HTTPException(status_code=404, detail="Coupon not found")
     return {"message": "Coupon deleted"}
+# Reviews (admin)
+@router.get("/reviews")
+async def admin_get_all_reviews(current_user: dict = Depends(get_current_user)):
+    """Listar todas las reseñas del sistema (solo admin)"""
+    user_role = current_user.get("role")
+    if user_role != "ADMIN":
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    from services.database_service import get_all_reviews
+    reviews = await get_all_reviews()
+    return {"reviews": reviews}
+
+
+@router.delete("/reviews/{review_id}")
+async def admin_delete_review(review_id: str, current_user: dict = Depends(get_current_user)):
+    """Eliminar reseña por id (solo admin)"""
+    user_role = current_user.get("role")
+    if user_role != "ADMIN":
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    from services.database_service import delete_review
+    ok = await delete_review(review_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Review not found")
+    return {"message": "Review deleted"}
