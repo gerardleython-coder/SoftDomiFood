@@ -87,6 +87,14 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# ============================================================
+# MIDDLEWARE - Performance Tracking (HU-01)
+# ============================================================
+from middleware.performance import PerformanceMiddleware
+
+# Agregar middleware de performance (ANTES de CORS para medir todo)
+app.add_middleware(PerformanceMiddleware, slow_threshold_ms=100)
+
 # CORS
 app.add_middleware(
     CORSMiddleware,
@@ -143,6 +151,32 @@ async def health():
         "status": "ok",
         "message": "SoftDomiFood API is running",
         "service": "producer"
+    }
+
+@app.get("/api/metrics/performance")
+async def get_performance_metrics():
+    """
+    Endpoint para obtener métricas de performance del sistema (HU-01).
+    Retorna estadísticas de tiempos de respuesta por endpoint.
+    """
+    from middleware.performance import get_performance_metrics
+    metrics = get_performance_metrics()
+    return {
+        "status": "ok",
+        "metrics": metrics.get_all_stats()
+    }
+
+@app.get("/api/metrics/cache")
+async def get_cache_metrics():
+    """
+    Endpoint para obtener estadísticas del cache en memoria (HU-01).
+    Retorna hits, misses, hit_rate y tamaño del cache.
+    """
+    from services.cache_service import get_cache
+    cache = get_cache()
+    return {
+        "status": "ok",
+        "cache": cache.get_stats()
     }
 
 if __name__ == "__main__":

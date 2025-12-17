@@ -4,16 +4,27 @@ import uuid
 from datetime import datetime, date
 from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
+from services.cache_service import get_cache, CacheKeys
+from services.secrets_manager import get_database_url, get_async_pg_url  # HU-05
 
 # Cargar variables de entorno
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL", "")
-ASYNC_PG_URL = os.getenv("ASYNC_PG_URL", DATABASE_URL)
+# Instancia de cache (singleton)
+_cache = get_cache()
+
+# HU-05: Funciones para obtener URLs con auditoría
+def _get_database_url() -> str:
+    """Obtener DATABASE_URL con auditoría (HU-05)"""
+    return get_database_url()
+
+def _get_async_pg_url() -> str:
+    """Obtener ASYNC_PG_URL con auditoría (HU-05)"""
+    return get_async_pg_url()
 
 async def get_connection():
-    """Obtener conexión a PostgreSQL"""
-    return await asyncpg.connect(ASYNC_PG_URL)
+    """Obtener conexión a PostgreSQL con secret auditado (HU-05)"""
+    return await asyncpg.connect(_get_async_pg_url())
 
 def convert_uuid_to_str(data: Any) -> Any:
     """Convertir UUIDs y fechas a strings en diccionarios o listas"""
@@ -37,37 +48,63 @@ def convert_value(value: Any) -> Any:
     return value
 
 async def get_products(category: Optional[str] = None, available: Optional[bool] = None) -> List[Dict[str, Any]]:
-    """Obtener lista de productos"""
+    """Obtener lista de productos (con cache de 120s)"""
+    # Cache key basado en filtros
+    cache_key = f"products:all:cat={category}:avail={available}"
+
+    # Intentar obtener del cache
+    cached = _cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     conn = await get_connection()
     try:
         query = "SELECT id, name, description, price, image, category, \"isAvailable\", \"createdAt\" FROM products WHERE 1=1"
         params = []
-        
+
         if category:
             query += " AND category = $1"
             params.append(category)
-        
+
         if available is not None:
             param_index = len(params) + 1
             query += f" AND \"isAvailable\" = ${param_index}"
             params.append(available)
-        
+
         query += " ORDER BY \"createdAt\" DESC"
-        
+
         rows = await conn.fetch(query, *params)
-        return [convert_uuid_to_str(dict(row)) for row in rows]
+        products = [convert_uuid_to_str(dict(row)) for row in rows]
+
+        # Guardar en cache (TTL 120s para catálogo)
+        _cache.set(cache_key, products, ttl_seconds=120)
+
+        return products
     finally:
         await conn.close()
 
 async def get_product_by_id(product_id: str) -> Optional[Dict[str, Any]]:
-    """Obtener producto por ID"""
+    """Obtener producto por ID (con cache de 180s)"""
+    cache_key = CacheKeys.product_by_id(product_id)
+
+    # Intentar obtener del cache
+    cached = _cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     conn = await get_connection()
     try:
         row = await conn.fetchrow(
             'SELECT id, name, description, price, image, category, "isAvailable" FROM products WHERE id = $1',
             product_id
         )
-        return convert_uuid_to_str(dict(row)) if row else None
+        product = convert_uuid_to_str(dict(row)) if row else None
+
+        # Guardar en cache solo si existe (TTL 180s)
+        if product:
+            _cache.set(cache_key, product, ttl_seconds=180)
+
+        return product
     finally:
         await conn.close()
 
@@ -81,24 +118,45 @@ async def create_order(
     coupon_code: Optional[str] = None,
     discount_applied: float = 0.0,
     status: str = "PENDING",
-    scheduled_for: Optional[datetime] = None
+    scheduled_for: Optional[datetime] = None,
+    order_id: Optional[str] = None  # 👈 HU-04: Permitir ID predefinido
 ) -> Dict[str, Any]:
-    """Crear pedido en la base de datos (soporta programado con status=SCHEDULED y scheduledFor)"""
+    """
+    Crear pedido en la base de datos.
+
+    Soporta:
+    - Pedidos programados (status=SCHEDULED, scheduledFor)
+    - Order ID predefinido (HU-04: confirmación inmediata)
+    """
     conn = await get_connection()
     try:
         async with conn.transaction():
-            order_id = await conn.fetchval(
-                """
-                INSERT INTO orders (
-                    id, "userId", "addressId", status, total, "paymentMethod", notes,
-                    coupon_code, discount_applied, "scheduledFor", "createdAt", "updatedAt"
+            # HU-04: Si se proporciona order_id, usarlo; sino, generar uno nuevo
+            if order_id:
+                await conn.execute(
+                    """
+                    INSERT INTO orders (
+                        id, "userId", "addressId", status, total, "paymentMethod", notes,
+                        coupon_code, discount_applied, "scheduledFor", "createdAt", "updatedAt"
+                    )
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+                    """,
+                    order_id, user_id, address_id, status, total, payment_method, notes,
+                    coupon_code, discount_applied, scheduled_for
                 )
-                VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
-                RETURNING id
-                """,
-                user_id, address_id, status, total, payment_method, notes,
-                coupon_code, discount_applied, scheduled_for
-            )
+            else:
+                order_id = await conn.fetchval(
+                    """
+                    INSERT INTO orders (
+                        id, "userId", "addressId", status, total, "paymentMethod", notes,
+                        coupon_code, discount_applied, "scheduledFor", "createdAt", "updatedAt"
+                    )
+                    VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+                    RETURNING id
+                    """,
+                    user_id, address_id, status, total, payment_method, notes,
+                    coupon_code, discount_applied, scheduled_for
+                )
 
             for item in items:
                 await conn.execute(
@@ -232,16 +290,16 @@ async def get_user_orders(user_id: str) -> List[Dict[str, Any]]:
     try:
         orders = await conn.fetch(
             """
-            SELECT 
-                o.id, 
-                o.status, 
-                o.total, 
-                o."paymentMethod", 
+            SELECT
+                o.id,
+                o.status,
+                o.total,
+                o."paymentMethod",
                 o.notes,
                 o.coupon_code,
                 o.discount_applied,
                 o."scheduledFor",
-                o."createdAt", 
+                o."createdAt",
                 o."updatedAt",
                 o."addressId"
             FROM orders o
@@ -256,7 +314,7 @@ async def get_user_orders(user_id: str) -> List[Dict[str, Any]]:
         for order in orders_list:
             items = await conn.fetch(
                 """
-                SELECT 
+                SELECT
                     oi.id,
                     oi.quantity,
                     oi.price,
@@ -278,14 +336,27 @@ async def get_user_orders(user_id: str) -> List[Dict[str, Any]]:
         await conn.close()
 
 async def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
-    """Obtener usuario por email"""
+    """Obtener usuario por email (con cache de 300s)"""
+    cache_key = CacheKeys.user_by_email(email)
+
+    # Intentar obtener del cache
+    cached = _cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     conn = await get_connection()
     try:
         user = await conn.fetchrow(
             'SELECT id, email, password, name, phone, role FROM users WHERE email = $1',
             email
         )
-        return convert_uuid_to_str(dict(user)) if user else None
+        user_data = convert_uuid_to_str(dict(user)) if user else None
+
+        # Guardar en cache solo si existe (TTL 300s)
+        if user_data:
+            _cache.set(cache_key, user_data, ttl_seconds=300)
+
+        return user_data
     finally:
         await conn.close()
 
@@ -302,7 +373,7 @@ async def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
         await conn.close()
 
 async def create_user(email: str, hashed_password: str, name: str, phone: Optional[str] = None) -> Dict[str, Any]:
-    """Crear nuevo usuario"""
+    """Crear nuevo usuario (invalida cache)"""
     conn = await get_connection()
     try:
         user_id = await conn.fetchval(
@@ -313,11 +384,16 @@ async def create_user(email: str, hashed_password: str, name: str, phone: Option
             """,
             email, hashed_password, name, phone, "CUSTOMER"
         )
-        
+
         user = await conn.fetchrow(
             'SELECT id, email, name, phone, role FROM users WHERE id = $1',
             user_id
         )
+
+        # Invalidar cache del usuario por email (aunque es nuevo, previene inconsistencias)
+        cache_key = CacheKeys.user_by_email(email)
+        _cache.delete(cache_key)
+
         return convert_uuid_to_str(dict(user)) if user else None
     finally:
         await conn.close()
@@ -328,19 +404,19 @@ async def get_all_orders() -> List[Dict[str, Any]]:
     try:
         orders = await conn.fetch(
             """
-            SELECT 
-                o.id, 
-                o.status, 
-                o.total, 
-                o."paymentMethod", 
+            SELECT
+                o.id,
+                o.status,
+                o.total,
+                o."paymentMethod",
                 o.notes,
                 o.coupon_code,
                 o.discount_applied,
                 o."scheduledFor",
-                o."createdAt", 
+                o."createdAt",
                 o."updatedAt",
                 u.id as customer_id,
-                u.name as customer_name, 
+                u.name as customer_name,
                 u.email as customer_email,
                 u.phone as customer_phone,
                 a.street as delivery_street,
@@ -361,7 +437,7 @@ async def get_all_orders() -> List[Dict[str, Any]]:
         for order in orders_list:
             items = await conn.fetch(
                 """
-                SELECT 
+                SELECT
                     oi.id,
                     oi.quantity,
                     oi.price,
@@ -399,7 +475,7 @@ async def update_order_status(order_id: str, status: str) -> Optional[Dict[str, 
         await conn.close()
 
 async def create_address(user_id: str, street: str, city: str, state: str, zip_code: str, country: str = "Colombia", is_default: bool = False, instructions: Optional[str] = None) -> Dict[str, Any]:
-    """Crear nueva dirección"""
+    """Crear nueva dirección (invalida cache)"""
     conn = await get_connection()
     try:
         # Primero, si is_default es True, desmarcar cualquier otra dirección como predeterminada
@@ -408,7 +484,7 @@ async def create_address(user_id: str, street: str, city: str, state: str, zip_c
                 'UPDATE addresses SET "isDefault" = false WHERE "userId" = $1',
                 user_id
             )
-            
+
         # Insertar la nueva dirección
         address_id = await conn.fetchval(
             """
@@ -418,18 +494,30 @@ async def create_address(user_id: str, street: str, city: str, state: str, zip_c
             """,
             user_id, street, city, state, zip_code, country, is_default, instructions
         )
-        
+
         # Obtener la dirección recién creada
         address = await conn.fetchrow(
             'SELECT id, "userId", street, city, state, "zipCode", country, "isDefault", instructions FROM addresses WHERE id = $1',
             address_id
         )
+
+        # Invalidar cache de direcciones del usuario
+        cache_key = CacheKeys.user_addresses(user_id)
+        _cache.delete(cache_key)
+
         return convert_uuid_to_str(dict(address)) if address else None
     finally:
         await conn.close()
 
 async def get_user_addresses(user_id: str) -> List[Dict[str, Any]]:
-    """Obtener direcciones de un usuario"""
+    """Obtener direcciones de un usuario (con cache de 90s)"""
+    cache_key = CacheKeys.user_addresses(user_id)
+
+    # Intentar obtener del cache
+    cached = _cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     conn = await get_connection()
     try:
         addresses = await conn.fetch(
@@ -440,7 +528,12 @@ async def get_user_addresses(user_id: str) -> List[Dict[str, Any]]:
             """,
             user_id
         )
-        return [convert_uuid_to_str(dict(row)) for row in addresses]
+        addresses_list = [convert_uuid_to_str(dict(row)) for row in addresses]
+
+        # Guardar en cache (TTL 90s)
+        _cache.set(cache_key, addresses_list, ttl_seconds=90)
+
+        return addresses_list
     finally:
         await conn.close()
 
@@ -468,7 +561,7 @@ async def create_product(name: str, description: Optional[str], price: float, ca
             """,
             name, description, price, image, category, is_available
         )
-        
+
         product = await conn.fetchrow(
             'SELECT id, name, description, price, image, category, "isAvailable", "createdAt", "updatedAt" FROM products WHERE id = $1',
             product_id
@@ -566,10 +659,10 @@ async def update_product(product_id: str, name: Optional[str] = None, descriptio
             'SELECT name, description, price, category, image, "isAvailable" FROM products WHERE id = $1',
             product_id
         )
-        
+
         if not current_product:
             return None
-        
+
         # Usar valores actuales si no se proporcionan nuevos
         updated_name = name if name is not None else current_product['name']
         updated_description = description if description is not None else current_product['description']
@@ -577,18 +670,18 @@ async def update_product(product_id: str, name: Optional[str] = None, descriptio
         updated_category = category if category is not None else current_product['category']
         updated_image = image if image is not None else current_product['image']
         updated_available = is_available if is_available is not None else current_product['isAvailable']
-        
+
         # Actualizar producto
         product = await conn.fetchrow(
             """
-            UPDATE products 
+            UPDATE products
             SET name = $1, description = $2, price = $3, category = $4, image = $5, "isAvailable" = $6, "updatedAt" = NOW()
             WHERE id = $7
             RETURNING id, name, description, price, image, category, "isAvailable", "createdAt", "updatedAt"
             """,
             updated_name, updated_description, updated_price, updated_category, updated_image, updated_available, product_id
         )
-        
+
         return convert_uuid_to_str(dict(product)) if product else None
     finally:
         await conn.close()
@@ -600,7 +693,7 @@ async def get_all_customers_with_addresses() -> List[Dict[str, Any]]:
         # Obtener todos los usuarios con rol CUSTOMER
         customers = await conn.fetch(
             """
-            SELECT 
+            SELECT
                 u.id,
                 u.email,
                 u.name,
@@ -613,14 +706,14 @@ async def get_all_customers_with_addresses() -> List[Dict[str, Any]]:
             ORDER BY u."createdAt" DESC
             """
         )
-        
+
         customers_list = [convert_uuid_to_str(dict(row)) for row in customers]
-        
+
         # Para cada cliente, obtener sus direcciones
         for customer in customers_list:
             addresses = await conn.fetch(
                 """
-                SELECT 
+                SELECT
                     id,
                     "userId",
                     street,
@@ -639,7 +732,7 @@ async def get_all_customers_with_addresses() -> List[Dict[str, Any]]:
                 customer['id']
             )
             customer['addresses'] = [convert_uuid_to_str(dict(addr)) for addr in addresses]
-        
+
         return customers_list
     finally:
         await conn.close()
@@ -738,11 +831,11 @@ async def user_can_review_product(user_id: str, product_id: str) -> Optional[str
         # Buscar un pedido DELIVERED que contenga este producto para este usuario
         order = await conn.fetchrow(
             """
-            SELECT o.id 
+            SELECT o.id
             FROM orders o
             JOIN order_items oi ON oi."orderId" = o.id
-            WHERE o."userId" = $1 
-              AND oi."productId" = $2 
+            WHERE o."userId" = $1
+              AND oi."productId" = $2
               AND o.status = 'DELIVERED'
             LIMIT 1
             """,
@@ -754,10 +847,10 @@ async def user_can_review_product(user_id: str, product_id: str) -> Optional[str
 
 
 async def create_review(
-    user_id: str, 
-    product_id: str, 
-    order_id: str, 
-    rating: int, 
+    user_id: str,
+    product_id: str,
+    order_id: str,
+    rating: int,
     comment: Optional[str] = None
 ) -> Dict[str, Any]:
     """
@@ -774,16 +867,16 @@ async def create_review(
             """,
             user_id, product_id, order_id, rating, comment
         )
-        
+
         review = await conn.fetchrow(
             """
-            SELECT 
-                r.id, 
-                r."userId", 
-                r."productId", 
-                r."orderId", 
-                r.rating, 
-                r.comment, 
+            SELECT
+                r.id,
+                r."userId",
+                r."productId",
+                r."orderId",
+                r.rating,
+                r.comment,
                 r."createdAt",
                 u.name as user_name
             FROM reviews r
@@ -807,13 +900,13 @@ async def get_product_reviews(product_id: str) -> Dict[str, Any]:
         # Obtener todas las reseñas del producto
         reviews = await conn.fetch(
             """
-            SELECT 
-                r.id, 
-                r."userId", 
-                r."productId", 
-                r."orderId", 
-                r.rating, 
-                r.comment, 
+            SELECT
+                r.id,
+                r."userId",
+                r."productId",
+                r."orderId",
+                r.rating,
+                r.comment,
                 r."createdAt",
                 u.name as user_name
             FROM reviews r
@@ -823,13 +916,13 @@ async def get_product_reviews(product_id: str) -> Dict[str, Any]:
             """,
             product_id
         )
-        
+
         reviews_list = [convert_uuid_to_str(dict(row)) for row in reviews]
-        
+
         # Calcular estadísticas
         total = len(reviews_list)
         average = sum(r['rating'] for r in reviews_list) / total if total > 0 else 0
-        
+
         return {
             "reviews": reviews_list,
             "average": round(average, 1),
@@ -847,7 +940,7 @@ async def check_user_reviewed_product(user_id: str, product_id: str) -> bool:
     try:
         review = await conn.fetchrow(
             """
-            SELECT id FROM reviews 
+            SELECT id FROM reviews
             WHERE "userId" = $1 AND "productId" = $2
             LIMIT 1
             """,
@@ -954,13 +1047,13 @@ async def get_all_reviews() -> list:
     try:
         reviews = await conn.fetch(
             """
-            SELECT 
-                r.id, 
-                r."userId", 
-                r."productId", 
-                r."orderId", 
-                r.rating, 
-                r.comment, 
+            SELECT
+                r.id,
+                r."userId",
+                r."productId",
+                r."orderId",
+                r.rating,
+                r.comment,
                 r."createdAt",
                 u.name as user_name,
                 u.email as user_email,
@@ -972,7 +1065,7 @@ async def get_all_reviews() -> list:
             ORDER BY r."createdAt" DESC
             """
         )
-        
+
         return [convert_uuid_to_str(dict(row)) for row in reviews]
     finally:
         await conn.close()
@@ -991,4 +1084,3 @@ async def delete_review(review_id: str) -> bool:
         return result.upper().startswith('DELETE')
     finally:
         await conn.close()
-
