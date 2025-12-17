@@ -46,4 +46,23 @@ database/backups/backup_*.sql
 **/env/
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 
+# Python test/coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.hypothesis/
+
+# Python build
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb

@@ -11,7 +11,7 @@ import { useFavorites } from '../hooks/useFavorites';
 const ClientPage = ({ switchToAdmin, toast, adminUser = null, isAdminView = false }) => {
   // Use the useFavorites hook
   const { favorites, isFavorite, toggleFavorite, error: favoritesError } = useFavorites();
-  
+
   const [user, setUser] = useState(null);
   const [cart, setCart] = useState([]);
   const [products, setProducts] = useState([]);
@@ -35,7 +35,7 @@ const ClientPage = ({ switchToAdmin, toast, adminUser = null, isAdminView = fals
   // Categorías que coinciden con el backend y panel de administrador
   const categories = ['Todos', 'SALCHIPAPAS', 'BEBIDAS', 'ADICIONALES', 'COMBOS'];
   const [selectedCategory, setSelectedCategory] = useState('Todos');
-  
+
   // Función para obtener etiquetas amigables de las categorías
   const getCategoryLabel = (category) => {
     if (category === 'Todos') return 'Todos';
@@ -53,7 +53,7 @@ const ClientPage = ({ switchToAdmin, toast, adminUser = null, isAdminView = fals
     // Verificar si hay un parámetro que indique que NO debe restaurar sesión
     const urlParams = new URLSearchParams(window.location.search);
     const noSession = urlParams.get('noSession') === 'true';
-    
+
     if (noSession) {
       // Si viene desde admin, limpiar todos los tokens de cliente y NO restaurar sesión
       localStorage.removeItem('clientToken');
@@ -68,12 +68,12 @@ const ClientPage = ({ switchToAdmin, toast, adminUser = null, isAdminView = fals
       loadProducts();
       return;
     }
-    
+
     // Guardar la vista actual si es vista de cliente normal
     if (!isAdminView) {
       localStorage.setItem('lastView', 'client');
     }
-    
+
     loadProducts();
     if (!isAdminView) {
       loadAddresses();
@@ -89,7 +89,7 @@ const ClientPage = ({ switchToAdmin, toast, adminUser = null, isAdminView = fals
     if (isAdminView) {
       return;
     }
-    
+
     // Usar token de cliente específico
     const token = localStorage.getItem('clientToken');
     if (token) {
@@ -121,16 +121,16 @@ const ClientPage = ({ switchToAdmin, toast, adminUser = null, isAdminView = fals
     if (isAdminView) {
       return;
     }
-    
+
     const token = localStorage.getItem('clientToken');
     if (!token) return; // Skip if not authenticated
-    
+
     try {
       const data = await addressesAPI.getAll();
       // API returns {addresses: [...]} so we need to extract the array
       const addressesList = data.addresses || data || [];
       setAddresses(addressesList);
-      
+
       // Set default address if none selected and addresses exist
       if (orderForm.addressId === '' && addressesList.length > 0) {
         const defaultAddress = addressesList.find(addr => addr.isDefault) || addressesList[0];
@@ -146,7 +146,7 @@ const ClientPage = ({ switchToAdmin, toast, adminUser = null, isAdminView = fals
       setAddresses([]); // Set empty array on error
     }
   };
-  
+
   const handleAddressAdded = (newAddress) => {
     setAddresses(prev => [...prev, newAddress]);
     // Optionally set the new address as selected
@@ -180,10 +180,10 @@ const ClientPage = ({ switchToAdmin, toast, adminUser = null, isAdminView = fals
     if (isAdminView) {
       return;
     }
-    
+
     const token = localStorage.getItem('clientToken');
     if (!token) return; // Skip if not authenticated
-    
+
     try {
       const data = await ordersAPI.getAll();
       // API might return {orders: [...]} so we need to extract the array
@@ -233,7 +233,7 @@ const ClientPage = ({ switchToAdmin, toast, adminUser = null, isAdminView = fals
       toast.warning('Los administradores no pueden realizar pedidos desde esta vista');
       return;
     }
-    
+
     if (cart.length === 0) {
       toast.warning('El carrito está vacío');
       return;
@@ -260,7 +260,7 @@ const ClientPage = ({ switchToAdmin, toast, adminUser = null, isAdminView = fals
     try {
       // Calcular el total
       const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-      
+
       const orderData = {
         items: cart.map(item => ({
           productId: item.id,
@@ -322,7 +322,7 @@ const ClientPage = ({ switchToAdmin, toast, adminUser = null, isAdminView = fals
       localStorage.setItem('lastView', 'client');
       loadAddresses();
       loadOrders();
-      loadFavorites();
+      // useFavorites hook loads automatically
     } catch (error) {
       console.error('Error logging in:', error);
       const errorMessage = error.response?.data?.detail || 'Error al iniciar sesión. Verifica tus credenciales.';
@@ -342,7 +342,7 @@ const ClientPage = ({ switchToAdmin, toast, adminUser = null, isAdminView = fals
         localStorage.setItem('lastView', 'client');
         loadAddresses();
         loadOrders();
-        loadFavorites();
+        // useFavorites hook loads automatically
       } else {
         toast.success('¡Registro exitoso! Ahora puedes iniciar sesión.');
         setShowRegister(false);
@@ -421,6 +421,7 @@ const ClientPage = ({ switchToAdmin, toast, adminUser = null, isAdminView = fals
                   onCouponApplied={setAppliedCoupon}
                   appliedCoupon={appliedCoupon}
                   toast={toast}
+                  onClose={() => setIsCartVisible(false)}
                 />
               )}
 
@@ -500,7 +501,7 @@ const ClientPage = ({ switchToAdmin, toast, adminUser = null, isAdminView = fals
           </div>
         </div>
       )}
-      
+
       {/* Botón discreto para ir a vista admin - Solo visible si no es vista de admin */}
       {!isAdminView && switchToAdmin && (
         <button
@@ -571,7 +572,7 @@ const ClientPage = ({ switchToAdmin, toast, adminUser = null, isAdminView = fals
             >
               Cancelar
             </button>
-            
+
           </div>
         </div>
       )}

@@ -42,8 +42,8 @@ const ProductCard = ({ product, onAddToCart, isFavorite, onToggleFavorite, isAut
           <button
             onClick={() => onToggleFavorite(product.id)}
             className={`absolute top-3 right-3 p-2 rounded-full transition-all ${
-              isFavorite 
-                ? 'bg-red-500 text-white hover:bg-red-600' 
+              isFavorite
+                ? 'bg-red-500 text-white hover:bg-red-600'
                 : 'bg-white text-gray-400 hover:text-red-500 hover:bg-gray-50'
             }`}
             title={isFavorite ? 'Quitar de favoritos' : 'Agregar a favoritos'}
@@ -87,26 +87,26 @@ const ProductCard = ({ product, onAddToCart, isFavorite, onToggleFavorite, isAut
           <div className="px-6 pb-6">
             <div className="bg-gray-50 rounded-lg p-3 mb-4">
               <div className="flex items-center gap-4">
-                <div className="text-center">
+                <div className="text-center flex-shrink-0">
                   <div className="text-2xl font-bold text-gray-900">{reviewsSummary.average.toFixed(1)}</div>
                   <div className="mt-1"><StarRating rating={reviewsSummary.average} readonly size="sm" /></div>
                   <p className="text-xs text-gray-600 mt-1">{reviewsSummary.total} {reviewsSummary.total === 1 ? 'reseña' : 'reseñas'}</p>
                 </div>
-                <div className="flex-1">
+                <div className="flex-1 min-w-0">
                   {reviewsSummary.reviews[0] && (
                     <div className="border border-gray-100 rounded p-2">
-                      <div className="flex items-center justify-between">
+                      <div className="flex flex-col gap-2">
                         <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center">
+                          <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center flex-shrink-0">
                             <User className="w-4 h-4 text-orange-600" />
                           </div>
-                          <div>
-                            <p className="font-medium text-gray-900">{reviewsSummary.reviews[0].user_name || 'Usuario'}</p>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-gray-900 truncate">{reviewsSummary.reviews[0].user_name || 'Usuario'}</p>
                             <p className="text-xs text-gray-500">{new Date(reviewsSummary.reviews[0].createdAt).toLocaleDateString('es-ES')}</p>
                           </div>
                         </div>
-                        <div>
-                          <StarRating rating={reviewsSummary.reviews[0].rating} readonly size="xs" />
+                        <div className="flex justify-start">
+                          <StarRating rating={reviewsSummary.reviews[0].rating} readonly size="sm" />
                         </div>
                       </div>
                     </div>
