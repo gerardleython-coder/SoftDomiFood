@@ -7,6 +7,7 @@ Cobertura:
 """
 import pytest
 from httpx import AsyncClient
+from tests.fixtures.data import SAMPLE_USER, SAMPLE_ADMIN
 
 
 class TestOrderWithAddressFlow:
@@ -23,8 +24,6 @@ class TestOrderWithAddressFlow:
         self,
         test_client: AsyncClient,
         test_db,
-        sample_user,
-        sample_address,
         seeded_db
     ):
         """
@@ -46,13 +45,28 @@ class TestOrderWithAddressFlow:
         login_response = await test_client.post(
             "/api/auth/login",
             json={
-                "email": sample_user["email"],
-                "password": sample_user["password"]
+                "email": SAMPLE_USER["email"],
+                "password": SAMPLE_USER["password"]
             }
         )
-        assert login_response.status_code == 200
-        token = login_response.json()["access_token"]
+        assert login_response.status_code in [200, 201], f"Login falló: {login_response.text}"
+        login_data = login_response.json()
+        token = login_data.get("token") or login_data.get("access_token")
+        assert token, f"No se obtuvo token: {login_data}"
         headers = {"Authorization": f"Bearer {token}"}
+
+        # Crear dirección mediante la API para evitar problemas de transacciones
+        from tests.fixtures.data import SAMPLE_ADDRESS
+        create_address_response = await test_client.post(
+            "/api/addresses",
+            json=SAMPLE_ADDRESS,
+            headers=headers
+        )
+        assert create_address_response.status_code in [200, 201], \
+            f"No se pudo crear dirección: {create_address_response.text}"
+        address_data = create_address_response.json()
+        created_address = address_data.get("address", address_data)
+        address_id = created_address.get("id") or created_address.get("addressId")
 
         # Verificar que el usuario tiene direcciones
         addresses_response = await test_client.get(
@@ -60,14 +74,15 @@ class TestOrderWithAddressFlow:
             headers=headers
         )
         assert addresses_response.status_code == 200
-        addresses = addresses_response.json()
+        addresses_data = addresses_response.json()
+        addresses = addresses_data.get("addresses", addresses_data)
         assert len(addresses) > 0, "Usuario debe tener al menos una dirección"
-
-        address_id = sample_address["id"]
 
         # And: Usuario tiene productos en carrito (simulado con items)
         products_response = await test_client.get("/api/products")
-        products = products_response.json()
+        response_data = products_response.json()
+        assert "products" in response_data, "Debe retornar objeto con campo 'products'"
+        products = response_data["products"]
         assert len(products) > 0, "Debe haber productos disponibles"
 
         order_items = [
@@ -82,7 +97,7 @@ class TestOrderWithAddressFlow:
         order_data = {
             "addressId": address_id,
             "items": order_items,
-            "paymentMethod": "CREDIT_CARD"
+            "paymentMethod": "CARD"
         }
 
         create_order_response = await test_client.post(
@@ -118,35 +133,34 @@ class TestOrderWithAddressFlow:
         self,
         test_client: AsyncClient,
         test_db,
-        sample_user,
         seeded_db
     ):
         """
-        TC-HU006-02: Validar la adición de una nueva dirección durante el checkout
+        # ...existing code...
 
         Pasos (Gherkin):
-        - Given: El usuario no tiene direcciones registradas
-        - When: Ingresa una nueva dirección válida durante el checkout
-        - And: Confirma el pedido
-        - Then: La nueva dirección se guarda
-        - And: El pedido se registra correctamente con la nueva dirección
+            - Given: El usuario no tiene direcciones registradas
+            - When: Ingresa una nueva dirección válida durante el checkout
+            - And: Confirma el pedido
+            - Then: La nueva dirección se guarda
+            - And: El pedido se registra correctamente con la nueva dirección
 
         Datos de Entrada:
-        - Nueva dirección válida
+            - Nueva dirección válida
 
         Resultado Esperado:
-        - La nueva dirección se guarda
-        - El pedido se registra correctamente con la nueva dirección
+            - La nueva dirección se guarda
+            - El pedido se registra correctamente con la nueva dirección
         """
         # Given: Usuario autenticado sin direcciones (o ignoramos las existentes)
         login_response = await test_client.post(
             "/api/auth/login",
             json={
-                "email": sample_user["email"],
-                "password": sample_user["password"]
+                "email": SAMPLE_USER["email"],
+                "password": SAMPLE_USER["password"]
             }
         )
-        token = login_response.json()["access_token"]
+        token = login_response.json()["token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Contar direcciones antes
@@ -154,7 +168,8 @@ class TestOrderWithAddressFlow:
             "/api/addresses",
             headers=headers
         )
-        addresses_before = addresses_before_response.json()
+        addresses_before_data = addresses_before_response.json()
+        addresses_before = addresses_before_data.get("addresses", addresses_before_data)
         address_count_before = len(addresses_before)
 
         # When: Ingresa nueva dirección válida
@@ -178,23 +193,28 @@ class TestOrderWithAddressFlow:
         assert create_address_response.status_code in [200, 201], \
             f"Expected 200/201, got {create_address_response.status_code}: {create_address_response.text}"
 
-        created_address = create_address_response.json()
+        created_address_response = create_address_response.json()
+        # El endpoint retorna {"message": "...", "address": {...}}
+        created_address = created_address_response.get("address", created_address_response)
         new_address_id = created_address.get("id") or created_address.get("addressId")
 
-        assert new_address_id is not None, "Dirección creada debe tener ID"
+        assert new_address_id is not None, f"Dirección creada debe tener ID. Respuesta: {created_address_response}"
 
         # Verificar que se guardó
         addresses_after_response = await test_client.get(
             "/api/addresses",
             headers=headers
         )
-        addresses_after = addresses_after_response.json()
+        addresses_after_data = addresses_after_response.json()
+        addresses_after = addresses_after_data.get("addresses", addresses_after_data)
         assert len(addresses_after) == address_count_before + 1, \
             "Debe haber una dirección adicional"
 
         # And: Confirma pedido con nueva dirección
         products_response = await test_client.get("/api/products")
-        products = products_response.json()
+        response_data = products_response.json()
+        assert "products" in response_data, "Debe retornar objeto con campo 'products'"
+        products = response_data["products"]
 
         order_data = {
             "addressId": new_address_id,
@@ -237,7 +257,6 @@ class TestOrderWithAddressFlow:
         self,
         test_client: AsyncClient,
         test_db,
-        sample_user,
         seeded_db
     ):
         """
@@ -249,15 +268,18 @@ class TestOrderWithAddressFlow:
         login_response = await test_client.post(
             "/api/auth/login",
             json={
-                "email": sample_user["email"],
-                "password": sample_user["password"]
+                "email": SAMPLE_USER["email"],
+                "password": SAMPLE_USER["password"]
             }
         )
-        token = login_response.json()["access_token"]
+        token = login_response.json()["token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Obtener productos
-        products = (await test_client.get("/api/products")).json()
+        products_response = await test_client.get("/api/products")
+        products_data = products_response.json()
+        products = products_data.get("products", products_data)
+        assert len(products) > 0, "Debe haber productos disponibles"
 
         # Intentar crear pedido con addressId inválido
         order_data = {
@@ -269,7 +291,7 @@ class TestOrderWithAddressFlow:
                     "price": products[0]["price"]
                 }
             ],
-            "paymentMethod": "CREDIT_CARD"
+            "paymentMethod": "CARD"
         }
 
         response = await test_client.post(
@@ -287,8 +309,7 @@ class TestOrderWithAddressFlow:
         self,
         test_client: AsyncClient,
         test_db,
-        sample_user,
-        sample_address
+        seeded_db
     ):
         """
         Test adicional: Pedido falla sin items
@@ -299,16 +320,31 @@ class TestOrderWithAddressFlow:
         login_response = await test_client.post(
             "/api/auth/login",
             json={
-                "email": sample_user["email"],
-                "password": sample_user["password"]
+                "email": SAMPLE_USER["email"],
+                "password": SAMPLE_USER["password"]
             }
         )
-        token = login_response.json()["access_token"]
+        assert login_response.status_code in [200, 201], f"Login falló: {login_response.text}"
+        login_data = login_response.json()
+        token = login_data.get("token") or login_data.get("access_token")
+        assert token, f"No se obtuvo token: {login_data}"
         headers = {"Authorization": f"Bearer {token}"}
+
+        # Crear dirección mediante la API
+        from tests.fixtures.data import SAMPLE_ADDRESS
+        create_address_response = await test_client.post(
+            "/api/addresses",
+            json=SAMPLE_ADDRESS,
+            headers=headers
+        )
+        assert create_address_response.status_code in [200, 201]
+        address_data = create_address_response.json()
+        created_address = address_data.get("address", address_data)
+        address_id = created_address.get("id") or created_address.get("addressId")
 
         # Intentar crear pedido sin items
         order_data = {
-            "addressId": sample_address["id"],
+            "addressId": address_id,
             "items": [],  # Sin items
             "paymentMethod": "CASH"
         }
@@ -328,8 +364,6 @@ class TestOrderWithAddressFlow:
         self,
         test_client: AsyncClient,
         test_db,
-        sample_user,
-        sample_address,
         seeded_db
     ):
         """
@@ -341,15 +375,30 @@ class TestOrderWithAddressFlow:
         login_response = await test_client.post(
             "/api/auth/login",
             json={
-                "email": sample_user["email"],
-                "password": sample_user["password"]
+                "email": SAMPLE_USER["email"],
+                "password": SAMPLE_USER["password"]
             }
         )
-        token = login_response.json()["access_token"]
+        token = login_response.json()["token"]
         headers = {"Authorization": f"Bearer {token}"}
 
+        # Crear dirección mediante la API
+        from tests.fixtures.data import SAMPLE_ADDRESS
+        create_address_response = await test_client.post(
+            "/api/addresses",
+            json=SAMPLE_ADDRESS,
+            headers=headers
+        )
+        assert create_address_response.status_code in [200, 201]
+        address_data = create_address_response.json()
+        created_address = address_data.get("address", address_data)
+        address_id = created_address.get("id") or created_address.get("addressId")
+
         # Obtener productos
-        products = (await test_client.get("/api/products")).json()
+        products_response = await test_client.get("/api/products")
+        products_data = products_response.json()
+        products = products_data.get("products", products_data)
+        assert len(products) > 0, "Debe haber productos disponibles"
 
         # Crear pedido con items específicos
         items = [
@@ -368,9 +417,9 @@ class TestOrderWithAddressFlow:
         expected_total = sum(item["quantity"] * item["price"] for item in items)
 
         order_data = {
-            "addressId": sample_address["id"],
+            "addressId": address_id,
             "items": items,
-            "paymentMethod": "CREDIT_CARD"
+            "paymentMethod": "CARD"
         }
 
         response = await test_client.post(
@@ -402,8 +451,8 @@ class TestOrderWithAddressFlow:
         self,
         test_client: AsyncClient,
         test_db,
-        sample_user,
-        sample_address
+        sample_address,
+        seeded_db
     ):
         """
         Test adicional: Listar direcciones del usuario
@@ -414,11 +463,11 @@ class TestOrderWithAddressFlow:
         login_response = await test_client.post(
             "/api/auth/login",
             json={
-                "email": sample_user["email"],
-                "password": sample_user["password"]
+                "email": SAMPLE_USER["email"],
+                "password": SAMPLE_USER["password"]
             }
         )
-        token = login_response.json()["access_token"]
+        token = login_response.json()["token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Obtener direcciones
@@ -428,7 +477,8 @@ class TestOrderWithAddressFlow:
         )
 
         assert response.status_code == 200
-        addresses = response.json()
+        addresses_data = response.json()
+        addresses = addresses_data.get("addresses", addresses_data)
 
         assert isinstance(addresses, list)
         assert len(addresses) > 0, "Usuario debe tener al menos una dirección"

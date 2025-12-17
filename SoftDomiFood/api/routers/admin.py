@@ -7,7 +7,7 @@ from services.database_service import (
     get_all_orders, update_order_status, create_product, update_product,
     get_all_customers_with_addresses, list_coupons, create_coupon, update_coupon, delete_coupon
 )
-from routers.auth import get_current_user
+from routers.auth import get_current_user, require_admin
 
 router = APIRouter()
 
@@ -56,13 +56,8 @@ class UpdateCouponRequest(BaseModel):
     isActive: Optional[bool] = None
 
 @router.get("/orders")
-async def get_all_orders_admin(current_user: dict = Depends(get_current_user)):
+async def get_all_orders_admin(current_user: dict = Depends(require_admin)):
     """Obtener todos los pedidos (solo admin)"""
-    # El payload del token tiene 'role' directamente
-    user_role = current_user.get("role")
-    if user_role != "ADMIN":
-        raise HTTPException(status_code=403, detail="Admin access required")
-
     orders = await get_all_orders()
     return {"orders": orders}
 
@@ -70,12 +65,9 @@ async def get_all_orders_admin(current_user: dict = Depends(get_current_user)):
 async def update_order_status_admin(
     order_id: str,
     request: UpdateStatusRequest,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_admin)
 ):
     """Actualizar estado de pedido (solo admin)"""
-    user_role = current_user.get("role")
-    if user_role != "ADMIN":
-        raise HTTPException(status_code=403, detail="Admin access required")
 
     valid_statuses = ["PENDING", "CONFIRMED", "PREPARING", "READY", "ON_DELIVERY", "DELIVERED", "CANCELLED"]
     if request.status not in valid_statuses:
@@ -93,12 +85,9 @@ async def update_order_status_admin(
 @router.post("/products")
 async def create_new_product(
     request: CreateProductRequest,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_admin)
 ):
     """Crear nuevo producto (solo admin)"""
-    user_role = current_user.get("role")
-    if user_role != "ADMIN":
-        raise HTTPException(status_code=403, detail="Admin access required")
 
     # Validar categoría
     valid_categories = ["SALCHIPAPAS", "BEBIDAS", "ADICIONALES", "COMBOS"]
@@ -126,12 +115,9 @@ async def create_new_product(
 async def update_existing_product(
     product_id: str,
     request: UpdateProductRequest,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_admin)
 ):
     """Actualizar producto existente (solo admin)"""
-    user_role = current_user.get("role")
-    if user_role != "ADMIN":
-        raise HTTPException(status_code=403, detail="Admin access required")
 
     # Validar categoría si se proporciona
     if request.category is not None:
@@ -157,13 +143,32 @@ async def update_existing_product(
         "product": product
     }
 
-@router.get("/customers")
-async def get_all_customers(current_user: dict = Depends(get_current_user)):
-    """Obtener todos los clientes con sus direcciones (solo admin)"""
-    user_role = current_user.get("role")
-    if user_role != "ADMIN":
-        raise HTTPException(status_code=403, detail="Admin access required")
+class UpdateAvailabilityRequest(BaseModel):
+    available: bool
 
+@router.patch("/products/{product_id}/availability")
+async def toggle_product_availability(
+    product_id: str,
+    request: UpdateAvailabilityRequest,
+    current_user: dict = Depends(require_admin)
+):
+    """Toggle product availability (admin only)"""
+    product = await update_product(
+        product_id=product_id,
+        is_available=request.available
+    )
+
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    return {
+        "message": f"Product availability updated to {request.available}",
+        "product": product
+    }
+
+@router.get("/customers")
+async def get_all_customers(current_user: dict = Depends(require_admin)):
+    """Obtener todos los clientes con sus direcciones (solo admin)"""
     customers = await get_all_customers_with_addresses()
     return {"customers": customers}
 
@@ -173,14 +178,14 @@ async def admin_coupons_preflight():
     return Response(status_code=200)
 
 @router.get("/coupons")
-async def admin_list_coupons():
-    """Listar cupones (sin autenticación temporal para pruebas)"""
+async def admin_list_coupons(current_user: dict = Depends(require_admin)):
+    """Listar cupones (solo admin)"""
     coupons = await list_coupons()
     return {"coupons": coupons}
 
 @router.post("/coupons")
-async def admin_create_coupon(request: CreateCouponRequest):
-    """Crear cupón (sin autenticación temporal para pruebas)"""
+async def admin_create_coupon(request: CreateCouponRequest, current_user: dict = Depends(require_admin)):
+    """Crear cupón (solo admin)"""
     # Convertir fechas ISO (string) a datetime para Postgres
     def parse_dt(value: Optional[str]) -> Optional[datetime]:
         if not value:
@@ -214,8 +219,8 @@ async def admin_create_coupon(request: CreateCouponRequest):
     return {"message": "Coupon created", "coupon": coupon}
 
 @router.put("/coupons/{coupon_id}")
-async def admin_update_coupon(coupon_id: str, request: UpdateCouponRequest):
-    """Actualizar cupón (sin autenticación temporal para pruebas)"""
+async def admin_update_coupon(coupon_id: str, request: UpdateCouponRequest, current_user: dict = Depends(require_admin)):
+    """Actualizar cupón (solo admin)"""
     # Convertir fechas ISO (string) a datetime para Postgres
     def parse_dt(value: Optional[str]) -> Optional[datetime]:
         if not value:
@@ -261,32 +266,24 @@ async def admin_update_coupon(coupon_id: str, request: UpdateCouponRequest):
     return {"message": "Coupon updated", "coupon": coupon}
 
 @router.delete("/coupons/{coupon_id}")
-async def admin_delete_coupon(coupon_id: str):
-    """Eliminar cupón (sin autenticación temporal para pruebas)"""
+async def admin_delete_coupon(coupon_id: str, current_user: dict = Depends(require_admin)):
+    """Eliminar cupón (solo admin)"""
     ok = await delete_coupon(coupon_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Coupon not found")
     return {"message": "Coupon deleted"}
 # Reviews (admin)
 @router.get("/reviews")
-async def admin_get_all_reviews(current_user: dict = Depends(get_current_user)):
+async def admin_get_all_reviews(current_user: dict = Depends(require_admin)):
     """Listar todas las reseñas del sistema (solo admin)"""
-    user_role = current_user.get("role")
-    if user_role != "ADMIN":
-        raise HTTPException(status_code=403, detail="Admin access required")
-
     from services.database_service import get_all_reviews
     reviews = await get_all_reviews()
     return {"reviews": reviews}
 
 
 @router.delete("/reviews/{review_id}")
-async def admin_delete_review(review_id: str, current_user: dict = Depends(get_current_user)):
+async def admin_delete_review(review_id: str, current_user: dict = Depends(require_admin)):
     """Eliminar reseña por id (solo admin)"""
-    user_role = current_user.get("role")
-    if user_role != "ADMIN":
-        raise HTTPException(status_code=403, detail="Admin access required")
-
     from services.database_service import delete_review
     ok = await delete_review(review_id)
     if not ok:

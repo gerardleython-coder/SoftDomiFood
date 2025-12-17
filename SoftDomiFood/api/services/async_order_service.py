@@ -78,15 +78,29 @@ class AsyncOrderProcessor:
                 "estimatedTime": "2-5 minutos"
             }
         """
+        # Validación crítica: Verificar disponibilidad de productos ANTES de confirmar
+        # Esta validación es síncrona (bloquea <10ms) pero evita confirmar pedidos imposibles
+        # Si falla, lanza OrderValidationError que se propaga al router como HTTPException
+        validated_items, calculated_total = await self.validator.validate_and_calculate_items(
+            order_data.get("items", [])
+        )
+
         # Generar ID único inmediatamente
         order_id = str(uuid.uuid4())
+
+        # Agregar items validados al order_data para evitar re-validación en slow path
+        order_data_with_validated = {
+            **order_data,
+            "_validated_items": validated_items,
+            "_calculated_total": calculated_total
+        }
 
         # Disparar procesamiento asíncrono (fire-and-forget)
         asyncio.create_task(
             self._process_order_async(
                 order_id=order_id,
                 user_id=user_id,
-                order_data=order_data
+                order_data=order_data_with_validated
             )
         )
 
@@ -131,9 +145,15 @@ class AsyncOrderProcessor:
             # ============================================================
             # VALIDACIÓN 2: Items del pedido
             # ============================================================
-            validated_items, calculated_total = await self.validator.validate_and_calculate_items(
-                items=order_data.get("items", [])
-            )
+            # Si ya están validados en fast path, reutilizar (evitar doble consulta BD)
+            if "_validated_items" in order_data and "_calculated_total" in order_data:
+                validated_items = order_data["_validated_items"]
+                calculated_total = order_data["_calculated_total"]
+            else:
+                # Validación completa (para casos donde no se ejecutó fast path)
+                validated_items, calculated_total = await self.validator.validate_and_calculate_items(
+                    items=order_data.get("items", [])
+                )
 
             # ============================================================
             # VALIDACIÓN 3: Total del pedido
@@ -198,7 +218,7 @@ class AsyncOrderProcessor:
                     if coupon:
                         await register_coupon_usage(coupon["id"], user_id, order_id)
                 except Exception as e:
-                    print(f"⚠️  Error registrando uso de cupón: {e}")
+                    print(f"[WARNING] Error registrando uso de cupón: {e}")
                     # No fallar todo el pedido por esto
 
             # ============================================================
@@ -207,23 +227,23 @@ class AsyncOrderProcessor:
             if status_value != "SCHEDULED":
                 try:
                     await publish_order(order)
-                    print(f"✅ Pedido {order_id} procesado y publicado a RabbitMQ")
+                    print(f"[OK] Pedido {order_id} procesado y publicado a RabbitMQ")
                 except Exception as mq_error:
-                    print(f"⚠️  Error publicando a RabbitMQ: {mq_error}")
+                    print(f"[WARNING] Error publicando a RabbitMQ: {mq_error}")
                     # Pedido guardado pero no publicado - retry manejado por RabbitMQ reconnect
 
-            print(f"✅ Procesamiento asíncrono completado para pedido {order_id}")
+            print(f"[OK] Procesamiento asíncrono completado para pedido {order_id}")
 
         except OrderValidationError as ove:
             # Error de validación - guardar pedido en estado FAILED
-            print(f"❌ Error de validación en pedido {order_id}: {ove.message}")
+            print(f"[ERROR] Error de validación en pedido {order_id}: {ove.message}")
             await self._save_failed_order(order_id, user_id, order_data, str(ove.message))
 
         except Exception as e:
             # Error general - guardar pedido en estado FAILED
             import traceback
             traceback.print_exc()
-            print(f"❌ Error procesando pedido {order_id}: {str(e)}")
+            print(f"[ERROR] Error procesando pedido {order_id}: {str(e)}")
             await self._save_failed_order(order_id, user_id, order_data, str(e))
 
     async def _save_failed_order(
@@ -251,9 +271,9 @@ class AsyncOrderProcessor:
                 status="FAILED",
                 order_id=order_id
             )
-            print(f"⚠️  Pedido {order_id} guardado como FAILED")
+            print(f"[WARNING] Pedido {order_id} guardado como FAILED")
         except Exception as save_error:
-            print(f"❌ Error crítico: No se pudo guardar pedido FAILED {order_id}: {save_error}")
+            print(f"[ERROR] Error crítico: No se pudo guardar pedido FAILED {order_id}: {save_error}")
             # Último recurso: loguear a archivo o servicio externo
             # En producción: enviar a sistema de monitoring (Sentry, CloudWatch, etc.)
 

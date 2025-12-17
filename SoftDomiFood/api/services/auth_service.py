@@ -47,7 +47,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
 def decode_token(token: str) -> Optional[Dict[str, Any]]:
     """Decodificar token JWT"""
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, _get_secret_key(), algorithms=[ALGORITHM])
         return payload
     except JWTError:
         return None
@@ -55,7 +55,7 @@ def decode_token(token: str) -> Optional[Dict[str, Any]]:
 def verify_token(token: str, credentials_exception):
     """Verificar token JWT"""
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, _get_secret_key(), algorithms=[ALGORITHM])
         email: str = payload.get("sub")
         if email is None:
             raise credentials_exception

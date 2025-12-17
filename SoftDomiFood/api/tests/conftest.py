@@ -21,8 +21,10 @@ from tests.fixtures.database import (
     create_test_database,
     init_test_database,
     clean_test_database,
-    seed_sample_products
+    seed_sample_products,
+    seed_sample_users
 )
+from tests.fixtures.data import SAMPLE_USER, SAMPLE_ADMIN
 
 # Event loop fixture para async tests
 @pytest.fixture(scope="session")
@@ -68,10 +70,39 @@ async def test_db(test_db_connection):
         # Rollback para limpiar cambios del test
         await transaction.rollback()
 
+@pytest.fixture(scope="session")
+async def test_users(test_db_connection):
+    """
+    Usuarios de test persistentes que se crean una vez por sesión
+    NO están dentro de transacciones, persisten en la BD
+    """
+    await seed_sample_users(test_db_connection)
+    yield
+    # Cleanup al final de la sesión
+    # IMPORTANTE: Eliminar orders ANTES de users para evitar FK violation
+    await test_db_connection.execute("""
+        DELETE FROM orders WHERE "userId" IN (
+            SELECT id FROM users WHERE email IN ($1, $2)
+        )
+    """, SAMPLE_USER["email"], SAMPLE_ADMIN["email"])
+    await test_db_connection.execute("DELETE FROM users WHERE email IN ($1, $2)",
+                                      SAMPLE_USER["email"], SAMPLE_ADMIN["email"])
+
+@pytest.fixture(scope="session")
+async def test_products(test_db_connection):
+    """
+    Productos de test persistentes que se crean una vez por sesión
+    NO están dentro de transacciones, persisten en la BD
+    """
+    await seed_sample_products(test_db_connection)
+    yield
+    # Cleanup al final de la sesión
+    await test_db_connection.execute("DELETE FROM products WHERE name LIKE 'Test Product%'")
+
 @pytest.fixture(scope="function")
-async def seeded_db(test_db):
-    """DB con datos de prueba (productos) pre-cargados"""
-    await seed_sample_products(test_db)
+async def seeded_db(test_db, test_users, test_products):
+    """DB con datos de prueba (productos y usuarios) pre-cargados"""
+    # test_users y test_products ya están creados a nivel de sesión
     yield test_db
 
 # Application fixtures
@@ -121,42 +152,45 @@ async def sample_user(test_db):
 
 @pytest.fixture
 async def sample_admin(test_db):
-    """Crear usuario admin de prueba"""
+    """Retornar credenciales del admin ya creado en seed_sample_users()"""
     from tests.fixtures.data import SAMPLE_ADMIN
-    from services.auth_service import get_password_hash
 
-    # Email único con UUID para evitar duplicados
-    unique_email = f"admin_{uuid.uuid4().hex[:8]}@test.com"
-    hashed_password = get_password_hash(SAMPLE_ADMIN["password"])
-
-    admin_id = await test_db.fetchval(
-        """
-        INSERT INTO users (id, email, password, name, role, "createdAt", "updatedAt")
-        VALUES (gen_random_uuid(), $1, $2, $3, 'ADMIN', NOW(), NOW())
-        RETURNING id
-        """,
-        unique_email,
-        hashed_password,
-        SAMPLE_ADMIN["name"]
+    # NO crear nuevo admin, usar el que ya existe en la BD de test
+    # (creado por seed_sample_users en prepare_test_db)
+    admin_data = await test_db.fetchrow(
+        "SELECT id, email, name, role FROM users WHERE email = $1",
+        SAMPLE_ADMIN["email"]
     )
 
     return {
-        "id": str(admin_id),
-        "email": unique_email,
-        "password": SAMPLE_ADMIN["password"],
+        "id": str(admin_data["id"]),
+        "email": SAMPLE_ADMIN["email"],
+        "password": SAMPLE_ADMIN["password"],  # Password sin hash (para login)
         "name": SAMPLE_ADMIN["name"],
         "role": "ADMIN"
     }
 
 @pytest.fixture
 async def auth_headers(test_client: AsyncClient, sample_user):
-    """Headers de autenticación simulados para usuario regular (sin llamar a /api/auth/login)"""
-    return {"Authorization": "Bearer test-user-token"}
+    """Headers de autenticación REALES para usuario regular"""
+    # Hacer login real con el usuario de prueba (de seed_data.py)
+    login_response = await test_client.post("/api/auth/login", json={
+        "email": "cliente1@example.com",
+        "password": "cliente123"
+    })
+    token = login_response.json()["token"]
+    return {"Authorization": f"Bearer {token}"}
 
 @pytest.fixture
 async def admin_headers(test_client: AsyncClient, sample_admin):
-    """Headers de autenticación simulados para admin (sin llamar a /api/auth/login)"""
-    return {"Authorization": "Bearer test-admin-token"}
+    """Headers de autenticación REALES para admin"""
+    # Hacer login real con el admin de prueba creado por sample_admin fixture
+    login_response = await test_client.post("/api/auth/login", json={
+        "email": sample_admin["email"],
+        "password": sample_admin["password"]
+    })
+    token = login_response.json()["token"]
+    return {"Authorization": f"Bearer {token}"}
 
 @pytest.fixture
 async def sample_address(test_db, sample_user):

@@ -2,15 +2,16 @@
 Datos de prueba determinísticos para tests
 """
 
-# Usuario de prueba estándar
+
+# Usuario de prueba estándar (debe coincidir con seed_data.py)
 SAMPLE_USER = {
-    "email": "test@example.com",
-    "password": "Test123!",
-    "name": "Test User",
-    "phone": "+57 300 123 4567"
+    "email": "cliente1@example.com",
+    "password": "cliente123",
+    "name": "Juan Pérez",
+    "phone": "3001234567"
 }
 
-# Usuario admin de prueba
+# Usuario admin de prueba (no existe por defecto en seed, pero se puede crear si es necesario)
 SAMPLE_ADMIN = {
     "email": "admin.test@example.com",
     "password": "AdminTest123!",

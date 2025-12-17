@@ -8,6 +8,7 @@ Cobertura:
 """
 import pytest
 from httpx import AsyncClient
+from tests.fixtures.data import SAMPLE_USER, SAMPLE_ADMIN
 
 
 class TestFavoritesFlow:
@@ -24,8 +25,6 @@ class TestFavoritesFlow:
     async def test_tc_hu005_01_add_product_to_favorites(
         self,
         test_client: AsyncClient,
-        test_db,
-        sample_user,
         seeded_db
     ):
         """
@@ -47,17 +46,20 @@ class TestFavoritesFlow:
         login_response = await test_client.post(
             "/api/auth/login",
             json={
-                "email": sample_user["email"],
-                "password": sample_user["password"]
+                "email": SAMPLE_USER["email"],
+                "password": SAMPLE_USER["password"]
             }
         )
-        assert login_response.status_code == 200
-        token = login_response.json()["access_token"]
+        assert login_response.status_code in [200, 201], f"Login falló: {login_response.text}"
+        login_data = login_response.json()
+        token = login_data.get("token") or login_data.get("access_token")
+        assert token, f"No se obtuvo token: {login_data}"
         headers = {"Authorization": f"Bearer {token}"}
 
         # Obtener un producto del menú
         products_response = await test_client.get("/api/products")
-        products = products_response.json()
+        products_data = products_response.json()
+        products = products_data["products"] if isinstance(products_data, dict) and "products" in products_data else products_data
         assert len(products) > 0, "Debe haber productos para marcar como favorito"
 
         product_id = products[0]["id"]
@@ -84,8 +86,8 @@ class TestFavoritesFlow:
         favorites_list = favorites_data.get("favorites", [])
 
         # El producto debe estar en la lista de favoritos
-        favorite_ids = [fav["id"] for fav in favorites_list]
-        assert product_id in favorite_ids, \
+        favorite_product_ids = [fav["productId"] for fav in favorites_list]
+        assert product_id in favorite_product_ids, \
             f"Producto {product_id} debe estar en favoritos"
 
     @pytest.mark.asyncio
@@ -93,7 +95,6 @@ class TestFavoritesFlow:
         self,
         test_client: AsyncClient,
         test_db,
-        sample_user,
         seeded_db
     ):
         """
@@ -115,16 +116,21 @@ class TestFavoritesFlow:
         login_response = await test_client.post(
             "/api/auth/login",
             json={
-                "email": sample_user["email"],
-                "password": sample_user["password"]
+                "email": SAMPLE_USER["email"],
+                "password": SAMPLE_USER["password"]
             }
         )
-        token = login_response.json()["access_token"]
+        assert login_response.status_code in [200, 201], f"Login falló: {login_response.text}"
+        login_data = login_response.json()
+        token = login_data.get("token") or login_data.get("access_token")
+        assert token, f"No se obtuvo token: {login_data}"
         headers = {"Authorization": f"Bearer {token}"}
 
         # Obtener producto y agregarlo a favoritos
         products_response = await test_client.get("/api/products")
-        products = products_response.json()
+        products_data = products_response.json()
+        products = products_data["products"] if isinstance(products_data, dict) and "products" in products_data else products_data
+        assert len(products) > 0, "Debe haber productos para favoritos"
         product_id = products[0]["id"]
 
         # Añadir a favoritos primero
@@ -138,7 +144,7 @@ class TestFavoritesFlow:
         favorites_before = await test_client.get("/api/favorites", headers=headers)
         favorites_before_data = favorites_before.json()
         favorites_before_list = favorites_before_data.get("favorites", [])
-        assert any(fav["id"] == product_id for fav in favorites_before_list), \
+        assert any(fav["productId"] == product_id for fav in favorites_before_list), \
             "Producto debe estar en favoritos antes de eliminar"
 
         # When: Elimina el producto de favoritos
@@ -156,8 +162,8 @@ class TestFavoritesFlow:
         favorites_after_data = favorites_after.json()
         favorites_after_list = favorites_after_data.get("favorites", [])
 
-        favorite_ids_after = [fav["id"] for fav in favorites_after_list]
-        assert product_id not in favorite_ids_after, \
+        favorite_product_ids_after = [fav["productId"] for fav in favorites_after_list]
+        assert product_id not in favorite_product_ids_after, \
             f"Producto {product_id} no debe estar en favoritos después de eliminar"
 
     @pytest.mark.asyncio
@@ -165,7 +171,6 @@ class TestFavoritesFlow:
         self,
         test_client: AsyncClient,
         test_db,
-        sample_user,
         seeded_db
     ):
         """
@@ -185,16 +190,21 @@ class TestFavoritesFlow:
         login_response = await test_client.post(
             "/api/auth/login",
             json={
-                "email": sample_user["email"],
-                "password": sample_user["password"]
+                "email": SAMPLE_USER["email"],
+                "password": SAMPLE_USER["password"]
             }
         )
-        token = login_response.json()["access_token"]
+        assert login_response.status_code in [200, 201], f"Login falló: {login_response.text}"
+        login_data = login_response.json()
+        token = login_data.get("token") or login_data.get("access_token")
+        assert token, f"No se obtuvo token: {login_data}"
         headers = {"Authorization": f"Bearer {token}"}
 
         # Añadir múltiples productos a favoritos
         products_response = await test_client.get("/api/products")
-        products = products_response.json()
+        products_data = products_response.json()
+        products = products_data["products"] if isinstance(products_data, dict) and "products" in products_data else products_data
+        assert len(products) > 0, "Debe haber productos para favoritos"
 
         # Añadir 2-3 productos como favoritos
         favorite_product_ids = []
@@ -236,7 +246,6 @@ class TestFavoritesFlow:
         self,
         test_client: AsyncClient,
         test_db,
-        sample_user,
         seeded_db
     ):
         """
@@ -248,15 +257,20 @@ class TestFavoritesFlow:
         login_response = await test_client.post(
             "/api/auth/login",
             json={
-                "email": sample_user["email"],
-                "password": sample_user["password"]
+                "email": SAMPLE_USER["email"],
+                "password": SAMPLE_USER["password"]
             }
         )
-        token = login_response.json()["access_token"]
+        assert login_response.status_code in [200, 201], f"Login falló: {login_response.text}"
+        login_data = login_response.json()
+        token = login_data.get("token") or login_data.get("access_token")
+        assert token, f"No se obtuvo token: {login_data}"
         headers = {"Authorization": f"Bearer {token}"}
 
         # Obtener producto
-        products = (await test_client.get("/api/products")).json()
+        products_data = (await test_client.get("/api/products")).json()
+        products = products_data["products"] if isinstance(products_data, dict) and "products" in products_data else products_data
+        assert len(products) > 0, "Debe haber productos para favoritos"
         product_id = products[0]["id"]
 
         # Añadir a favoritos por primera vez
@@ -282,7 +296,7 @@ class TestFavoritesFlow:
         favorites_response = await test_client.get("/api/favorites", headers=headers)
         favorites_list = favorites_response.json()["favorites"]
 
-        product_count = sum(1 for fav in favorites_list if fav["id"] == product_id)
+        product_count = sum(1 for fav in favorites_list if fav["productId"] == product_id)
         assert product_count == 1, "Producto no debe estar duplicado en favoritos"
 
     @pytest.mark.asyncio
@@ -307,7 +321,6 @@ class TestFavoritesFlow:
         self,
         test_client: AsyncClient,
         test_db,
-        sample_user,
         seeded_db
     ):
         """
@@ -319,15 +332,17 @@ class TestFavoritesFlow:
         login_response = await test_client.post(
             "/api/auth/login",
             json={
-                "email": sample_user["email"],
-                "password": sample_user["password"]
+                "email": SAMPLE_USER["email"],
+                "password": SAMPLE_USER["password"]
             }
         )
-        token = login_response.json()["access_token"]
+        token = login_response.json()["token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # Obtener producto y añadir a favoritos
-        products = (await test_client.get("/api/products")).json()
+        products_data = (await test_client.get("/api/products")).json()
+        products = products_data["products"] if isinstance(products_data, dict) and "products" in products_data else products_data
+        assert len(products) > 0, "Debe haber productos para favoritos"
         favorite_product_id = products[0]["id"]
         non_favorite_product_id = products[1]["id"] if len(products) > 1 else None
 
@@ -345,7 +360,7 @@ class TestFavoritesFlow:
 
         if check_response.status_code == 200:
             check_data = check_response.json()
-            assert check_data.get("isFavorite") is True, \
+            assert check_data.get("exists") is True, \
                 "Producto añadido debe ser favorito"
 
         # Verificar producto no favorito (si existe)
@@ -355,4 +370,5 @@ class TestFavoritesFlow:
                 headers=headers
             )
             if check_non_fav.status_code == 200:
-                assert check_non_fav.json().get("isFavorite") is False
+                assert check_non_fav.json().get("exists") == False, \
+                    "Producto no añadido NO debe ser favorito"

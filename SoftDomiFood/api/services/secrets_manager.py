@@ -238,7 +238,7 @@ class SecretsManager:
                 client_info=f"Rotated from {old_value_masked} to {new_value_masked}"
             )
 
-            print(f"🔄 Secret '{secret_name}' rotated successfully")
+            print(f"[ROTATE] Secret '{secret_name}' rotated successfully")
             return True
 
     def reload_all_secrets(self) -> bool:
@@ -264,7 +264,7 @@ class SecretsManager:
                     client_info=f"Reloaded {len(self._secrets)} secrets"
                 )
 
-                print(f"🔄 All secrets reloaded successfully ({len(self._secrets)} secrets)")
+                print(f"[RELOAD] All secrets reloaded successfully ({len(self._secrets)} secrets)")
                 return True
 
             except Exception as e:
@@ -313,7 +313,7 @@ class SecretsManager:
             if filepath:
                 with open(filepath, 'w') as f:
                     f.write(json_str)
-                print(f"📄 Audit log exported to {filepath}")
+                print(f"[EXPORT] Audit log exported to {filepath}")
 
             return json_str
 
@@ -333,8 +333,12 @@ class SecretsManager:
         )
         self._audit_log.append(entry)
 
-        # Log a consola para troubleshooting
-        print(f"🔐 AUDIT: {entry.to_json()}")
+        # Log a consola para troubleshooting (sin emoji para compatibilidad Windows)
+        try:
+            print(f"[AUDIT] {entry.to_json()}")
+        except UnicodeEncodeError:
+            # Fallback si hay problemas de encoding
+            print(f"[AUDIT] {entry.to_json().encode('ascii', errors='replace').decode('ascii')}")
 
     def _mask_secret(self, value: str, show_chars: int = 4) -> str:
         """

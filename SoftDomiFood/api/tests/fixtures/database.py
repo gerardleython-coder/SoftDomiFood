@@ -72,7 +72,7 @@ async def clean_test_database(conn: asyncpg.Connection):
 async def seed_sample_products(conn: asyncpg.Connection):
     """Insertar productos de prueba"""
     from tests.fixtures.data import SAMPLE_PRODUCTS
-    
+
     for product in SAMPLE_PRODUCTS:
         await conn.execute(
             """
@@ -86,3 +86,41 @@ async def seed_sample_products(conn: asyncpg.Connection):
             product.get("image"),
             product["isAvailable"]
         )
+
+async def seed_sample_users(conn: asyncpg.Connection):
+    """Insertar usuarios de prueba con credenciales conocidas"""
+    from tests.fixtures.data import SAMPLE_USER, SAMPLE_ADMIN
+    from services.auth_service import get_password_hash
+
+    # Usuario cliente
+    try:
+        hashed_password = get_password_hash(SAMPLE_USER["password"])
+        await conn.execute(
+            """
+            INSERT INTO users (id, email, password, name, phone, role, "createdAt", "updatedAt")
+            VALUES (gen_random_uuid(), $1, $2, $3, $4, 'CUSTOMER', NOW(), NOW())
+            """,
+            SAMPLE_USER["email"],
+            hashed_password,
+            SAMPLE_USER["name"],
+            SAMPLE_USER.get("phone")
+        )
+        print(f"[OK] Usuario de test creado: {SAMPLE_USER['email']}")
+    except Exception as e:
+        print(f"[WARN] Error al insertar usuario de prueba: {e}")
+
+    # Usuario admin
+    try:
+        hashed_password = get_password_hash(SAMPLE_ADMIN["password"])
+        await conn.execute(
+            """
+            INSERT INTO users (id, email, password, name, role, "createdAt", "updatedAt")
+            VALUES (gen_random_uuid(), $1, $2, $3, 'ADMIN', NOW(), NOW())
+            """,
+            SAMPLE_ADMIN["email"],
+            hashed_password,
+            SAMPLE_ADMIN["name"]
+        )
+        print(f"[OK] Admin de test creado: {SAMPLE_ADMIN['email']}")
+    except Exception as e:
+        print(f"[WARN] Error al insertar admin de prueba: {e}")

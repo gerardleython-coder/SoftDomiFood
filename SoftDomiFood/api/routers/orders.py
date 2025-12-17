@@ -6,6 +6,7 @@ from enum import Enum
 from routers.auth import get_current_user
 from services.database_service import get_order_status, get_user_orders
 from services.async_order_service import get_async_order_processor  # HU-04
+from services.order_validation_service import OrderValidationError  # Para capturar errores de validación
 
 router = APIRouter()
 
@@ -50,6 +51,18 @@ async def create_new_order(
         if not current_user or not current_user.get("userId"):
             raise HTTPException(status_code=401, detail="Usuario no autenticado")
 
+        # Validación básica de items
+        if not order_data.items or len(order_data.items) == 0:
+            raise HTTPException(status_code=422, detail="El pedido debe tener al menos un item")
+
+        # Validación básica de dirección (existencia)
+        from services.database_service import get_address_by_id
+        address = await get_address_by_id(order_data.addressId)
+        if not address:
+            raise HTTPException(status_code=404, detail="Dirección no encontrada")
+        if address.get("userId") != current_user["userId"]:
+            raise HTTPException(status_code=403, detail="La dirección no pertenece al usuario")
+
         # HU-04: Obtener procesador asíncrono
         async_processor = get_async_order_processor()
 
@@ -73,7 +86,11 @@ async def create_new_order(
 
     except HTTPException:
         raise
+    except OrderValidationError as ove:
+        # Capturar errores de validación y convertirlos en HTTPException con el código apropiado
+        raise HTTPException(status_code=ove.status_code, detail=ove.message)
     except Exception as e:
+        # Error inesperado
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error creating order: {str(e)}")

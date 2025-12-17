@@ -29,20 +29,20 @@ async def _loop():
 
                     try:
                         await publish_order(order)
-                        print(f"✅ Pedido programado liberado a Rabbit: {order_id}")
+                        print(f"[OK] Pedido programado liberado a Rabbit: {order_id}")
                     except Exception as e:
                         # Si falla Rabbit, revertimos para reintentar en el siguiente ciclo
-                        print(f"⚠️  No se pudo publicar pedido programado {order_id}: {e}")
+                        print(f"[WARNING] No se pudo publicar pedido programado {order_id}: {e}")
                         try:
                             await update_order_status(order_id, "SCHEDULED")
                         except Exception as e2:
-                            print(f"❌ Error intentando revertir a SCHEDULED {order_id}: {e2}")
+                            print(f"[ERROR] Error intentando revertir a SCHEDULED {order_id}: {e2}")
 
         except asyncio.CancelledError:
-            print("🛑 Scheduled dispatcher detenido.")
+            print("[DISPATCHER] Scheduled dispatcher detenido.")
             raise
         except Exception as e:
-            print(f"⚠️  Error en dispatcher: {e}")
+            print(f"[WARNING] Error en dispatcher: {e}")
 
         await asyncio.sleep(POLL_SECONDS)
 

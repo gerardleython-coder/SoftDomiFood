@@ -47,10 +47,15 @@ def convert_value(value: Any) -> Any:
         return [convert_uuid_to_str(item) for item in value]
     return value
 
-async def get_products(category: Optional[str] = None, available: Optional[bool] = None) -> List[Dict[str, Any]]:
+async def get_products(
+    category: Optional[str] = None,
+    available: Optional[bool] = None,
+    skip: int = 0,
+    limit: int = 100
+) -> List[Dict[str, Any]]:
     """Obtener lista de productos (con cache de 120s)"""
     # Cache key basado en filtros
-    cache_key = f"products:all:cat={category}:avail={available}"
+    cache_key = f"products:all:cat={category}:avail={available}:skip={skip}:limit={limit}"
 
     # Intentar obtener del cache
     cached = _cache.get(cache_key)
@@ -72,6 +77,11 @@ async def get_products(category: Optional[str] = None, available: Optional[bool]
             params.append(available)
 
         query += " ORDER BY \"createdAt\" DESC"
+
+        # Agregar paginación
+        param_index = len(params) + 1
+        query += f" LIMIT ${param_index} OFFSET ${param_index + 1}"
+        params.extend([limit, skip])
 
         rows = await conn.fetch(query, *params)
         products = [convert_uuid_to_str(dict(row)) for row in rows]
@@ -137,25 +147,25 @@ async def create_order(
                     """
                     INSERT INTO orders (
                         id, "userId", "addressId", status, total, "paymentMethod", notes,
-                        coupon_code, discount_applied, "scheduledFor", "createdAt", "updatedAt"
+                        coupon_code, discount_applied, "createdAt", "updatedAt"
                     )
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
                     """,
                     order_id, user_id, address_id, status, total, payment_method, notes,
-                    coupon_code, discount_applied, scheduled_for
+                    coupon_code, discount_applied
                 )
             else:
                 order_id = await conn.fetchval(
                     """
                     INSERT INTO orders (
                         id, "userId", "addressId", status, total, "paymentMethod", notes,
-                        coupon_code, discount_applied, "scheduledFor", "createdAt", "updatedAt"
+                        coupon_code, discount_applied, "createdAt", "updatedAt"
                     )
-                    VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+                    VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
                     RETURNING id
                     """,
                     user_id, address_id, status, total, payment_method, notes,
-                    coupon_code, discount_applied, scheduled_for
+                    coupon_code, discount_applied
                 )
 
             for item in items:
@@ -170,7 +180,7 @@ async def create_order(
             order = await conn.fetchrow(
                 """
                 SELECT id, "userId", "addressId", status, total, "paymentMethod", notes,
-                       coupon_code, discount_applied, "scheduledFor", "createdAt", "updatedAt"
+                       coupon_code, discount_applied, "createdAt", "updatedAt"
                 FROM orders WHERE id = $1
                 """,
                 order_id
@@ -274,7 +284,7 @@ async def get_order_status(order_id: str) -> Optional[Dict[str, Any]]:
     try:
         order = await conn.fetchrow(
             """
-            SELECT id, status, total, "paymentMethod", coupon_code, discount_applied, "scheduledFor", "createdAt", "updatedAt"
+            SELECT id, status, total, "paymentMethod", coupon_code, discount_applied, "createdAt", "updatedAt"
             FROM orders WHERE id = $1
             """,
             order_id
@@ -298,7 +308,6 @@ async def get_user_orders(user_id: str) -> List[Dict[str, Any]]:
                 o.notes,
                 o.coupon_code,
                 o.discount_applied,
-                o."scheduledFor",
                 o."createdAt",
                 o."updatedAt",
                 o."addressId"
@@ -412,7 +421,6 @@ async def get_all_orders() -> List[Dict[str, Any]]:
                 o.notes,
                 o.coupon_code,
                 o.discount_applied,
-                o."scheduledFor",
                 o."createdAt",
                 o."updatedAt",
                 u.id as customer_id,
@@ -682,6 +690,11 @@ async def update_product(product_id: str, name: Optional[str] = None, descriptio
             updated_name, updated_description, updated_price, updated_category, updated_image, updated_available, product_id
         )
 
+        # Invalidar caché del producto actualizado
+        cache_key = CacheKeys.product_by_id(product_id)
+        if cache_key in _cache:
+            del _cache[cache_key]
+
         return convert_uuid_to_str(dict(product)) if product else None
     finally:
         await conn.close()
@@ -746,9 +759,7 @@ async def get_due_scheduled_order_ids(limit: int = 50) -> List[str]:
             SELECT id
             FROM orders
             WHERE status = 'SCHEDULED'
-              AND "scheduledFor" IS NOT NULL
-              AND "scheduledFor" <= NOW()
-            ORDER BY "scheduledFor" ASC
+            ORDER BY "createdAt" ASC
             LIMIT $1
             """,
             limit
@@ -770,8 +781,6 @@ async def claim_scheduled_order(order_id: str) -> bool:
             SET status = 'PENDING', "updatedAt" = NOW()
             WHERE id = $1
               AND status = 'SCHEDULED'
-              AND "scheduledFor" IS NOT NULL
-              AND "scheduledFor" <= NOW()
             RETURNING id
             """,
             order_id
@@ -787,7 +796,7 @@ async def get_order_by_id_full(order_id: str) -> Optional[Dict[str, Any]]:
         order = await conn.fetchrow(
             """
             SELECT id, "userId", "addressId", status, total, "paymentMethod", notes,
-                   coupon_code, discount_applied, "scheduledFor", "createdAt", "updatedAt"
+                   coupon_code, discount_applied, "createdAt", "updatedAt"
             FROM orders
             WHERE id = $1
             """,
@@ -957,7 +966,7 @@ async def get_user_favorites(user_id: str) -> List[Dict[str, Any]]:
     try:
         rows = await conn.fetch(
             """
-            SELECT f.id, f."productId", p.name as product_name, p.description as product_description, p.price, p.image, p.category
+            SELECT f.id, f."productId", p.name, p.description, p.price, p.image, p.category
             FROM favorites f
             JOIN products p ON f."productId" = p.id
             WHERE f."userId" = $1

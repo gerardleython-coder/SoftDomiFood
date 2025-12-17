@@ -25,9 +25,9 @@ async def get_connection() -> aio_pika.RobustConnection:
             _connection = await aio_pika.connect_robust(rabbitmq_url)
             # Ocultar contraseña en logs
             safe_url = rabbitmq_url.split('@')[0].split(':')[0] + '://****@' + '@'.join(rabbitmq_url.split('@')[1:]) if '@' in rabbitmq_url else rabbitmq_url
-            print(f"✅ Conexión RabbitMQ establecida: {safe_url}")
+            print(f"[OK] Conexión RabbitMQ establecida: {safe_url}")
         except Exception as e:
-            print(f"❌ Error conectando a RabbitMQ: {e}")
+            print(f"[ERROR] Error conectando a RabbitMQ: {e}")
             _connection = None
             raise
     return _connection
@@ -40,7 +40,7 @@ async def get_channel() -> aio_pika.RobustChannel:
         _channel = await connection.channel()
         # Declarar cola al crear el canal
         await _channel.declare_queue(QUEUE_NAME, durable=True)
-        print(f"✅ Canal RabbitMQ creado y cola '{QUEUE_NAME}' declarada")
+        print(f"[OK] Canal RabbitMQ creado y cola '{QUEUE_NAME}' declarada")
     return _channel
 
 async def close_connection():
@@ -52,7 +52,7 @@ async def close_connection():
     if _connection and not _connection.is_closed:
         await _connection.close()
         _connection = None
-    print("🔌 Conexión RabbitMQ cerrada")
+    print("[RABBITMQ] Conexión cerrada")
 
 def json_serial(obj):
     """JSON serializer for objects not serializable by default json code"""
@@ -107,11 +107,11 @@ async def publish_order(order_data: Dict[str, Any]):
             routing_key=QUEUE_NAME
         )
 
-        print(f"✅ Mensaje publicado a {QUEUE_NAME}: {message.get('orderId')}")
+        print(f"[OK] Mensaje publicado a {QUEUE_NAME}: {message.get('orderId')}")
         return True
     except aio_pika.exceptions.ConnectionClosed:
         # Reconectar si la conexión se cerró
-        print("⚠️  Conexión RabbitMQ cerrada, reconectando...")
+        print("[WARNING] Conexión RabbitMQ cerrada, reconectando...")
         global _connection, _channel
         _connection = None
         _channel = None
@@ -125,10 +125,10 @@ async def publish_order(order_data: Dict[str, Any]):
             ),
             routing_key=QUEUE_NAME
         )
-        print(f"✅ Mensaje publicado a {QUEUE_NAME} (después de reconexión): {message.get('orderId')}")
+        print(f"[OK] Mensaje publicado a {QUEUE_NAME} (después de reconexión): {message.get('orderId')}")
         return True
     except Exception as e:
-        print(f"❌ Error publicando mensaje: {e}")
+        print(f"[ERROR] Error publicando mensaje: {e}")
         import traceback
         traceback.print_exc()
         raise

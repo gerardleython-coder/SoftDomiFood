@@ -1,0 +1,163 @@
+﻿============================= test session starts =============================
+collecting ... collected 35 items
+
+tests/e2e/test_favorites_flow.py::TestFavoritesFlow::test_tc_hu005_01_add_product_to_favorites 
+-------------------------------- live log call --------------------------------
+2025-12-17 13:59:54 [ WARNING] Slow request detected: POST /api/auth/login
+2025-12-17 13:59:54 [    INFO] HTTP Request: POST http://test/api/auth/login "HTTP/1.1 401 Unauthorized"
+FAILED                                                                   [  2%]
+tests/e2e/test_favorites_flow.py::TestFavoritesFlow::test_tc_hu005_02_remove_product_from_favorites 
+-------------------------------- live log call --------------------------------
+2025-12-17 13:59:55 [ WARNING] Slow request detected: POST /api/auth/login
+2025-12-17 13:59:55 [    INFO] HTTP Request: POST http://test/api/auth/login "HTTP/1.1 401 Unauthorized"
+FAILED                                                                   [  5%]
+tests/e2e/test_favorites_flow.py::TestFavoritesFlow::test_tc_hu005_03_list_favorites 
+-------------------------------- live log call --------------------------------
+2025-12-17 13:59:56 [ WARNING] Slow request detected: POST /api/auth/login
+2025-12-17 13:59:56 [    INFO] HTTP Request: POST http://test/api/auth/login "HTTP/1.1 401 Unauthorized"
+FAILED                                                                   [  8%]
+tests/e2e/test_favorites_flow.py::TestFavoritesFlow::test_add_duplicate_favorite_is_idempotent 
+-------------------------------- live log call --------------------------------
+2025-12-17 13:59:57 [ WARNING] Slow request detected: POST /api/auth/login
+2025-12-17 13:59:57 [    INFO] HTTP Request: POST http://test/api/auth/login "HTTP/1.1 401 Unauthorized"
+FAILED                                                                   [ 11%]
+tests/e2e/test_favorites_flow.py::TestFavoritesFlow::test_favorites_require_authentication 
+-------------------------------- live log call --------------------------------
+2025-12-17 13:59:57 [ WARNING] Client error: GET /api/favorites
+2025-12-17 13:59:57 [    INFO] HTTP Request: GET http://test/api/favorites "HTTP/1.1 403 Forbidden"
+PASSED                                                                   [ 14%]
+tests/e2e/test_favorites_flow.py::TestFavoritesFlow::test_check_if_product_is_favorite 
+-------------------------------- live log call --------------------------------
+2025-12-17 13:59:58 [ WARNING] Slow request detected: POST /api/auth/login
+2025-12-17 13:59:58 [    INFO] HTTP Request: POST http://test/api/auth/login "HTTP/1.1 401 Unauthorized"
+FAILED                                                                   [ 17%]
+tests/e2e/test_order_lifecycle.py::TestCompleteOrderLifecycle::test_complete_order_flow_new_user SKIPPED [ 20%]
+tests/e2e/test_order_lifecycle.py::TestCompleteOrderLifecycle::test_order_flow_with_coupon SKIPPED [ 22%]
+tests/e2e/test_order_lifecycle.py::TestCompleteOrderLifecycle::test_admin_manages_order_lifecycle SKIPPED [ 25%]
+tests/e2e/test_order_lifecycle.py::TestCompleteOrderLifecycle::test_multiple_concurrent_orders SKIPPED [ 28%]
+tests/e2e/test_order_lifecycle.py::TestCompleteOrderLifecycle::test_order_cancellation_flow SKIPPED [ 31%]
+tests/e2e/test_order_lifecycle.py::TestCompleteOrderLifecycle::test_order_with_unavailable_product_fails 
+-------------------------------- live log call --------------------------------
+2025-12-17 13:59:59 [ WARNING] Client error: PATCH /products/{id}/availability
+2025-12-17 13:59:59 [    INFO] HTTP Request: PATCH http://test/products/prod-001/availability "HTTP/1.1 404 Not Found"
+FAILED                                                                   [ 34%]
+tests/e2e/test_order_with_address_flow.py::TestOrderWithAddressFlow::test_tc_hu006_01_order_with_existing_address 
+-------------------------------- live log call --------------------------------
+2025-12-17 14:00:00 [ WARNING] Slow request detected: POST /api/auth/login
+2025-12-17 14:00:00 [    INFO] HTTP Request: POST http://test/api/auth/login "HTTP/1.1 401 Unauthorized"
+FAILED                                                                   [ 37%]
+tests/e2e/test_order_with_address_flow.py::TestOrderWithAddressFlow::test_tc_hu006_02_order_with_new_address 
+-------------------------------- live log call --------------------------------
+2025-12-17 14:00:01 [ WARNING] Slow request detected: POST /api/auth/login
+2025-12-17 14:00:01 [    INFO] HTTP Request: POST http://test/api/auth/login "HTTP/1.1 401 Unauthorized"
+FAILED                                                                   [ 40%]
+tests/e2e/test_order_with_address_flow.py::TestOrderWithAddressFlow::test_order_fails_with_invalid_address 
+-------------------------------- live log call --------------------------------
+2025-12-17 14:00:02 [ WARNING] Slow request detected: POST /api/auth/login
+2025-12-17 14:00:02 [    INFO] HTTP Request: POST http://test/api/auth/login "HTTP/1.1 401 Unauthorized"
+FAILED                                                                   [ 42%]
+tests/e2e/test_order_with_address_flow.py::TestOrderWithAddressFlow::test_order_fails_without_items 
+-------------------------------- live log call --------------------------------
+2025-12-17 14:00:02 [ WARNING] Slow request detected: POST /api/auth/login
+2025-12-17 14:00:02 [    INFO] HTTP Request: POST http://test/api/auth/login "HTTP/1.1 401 Unauthorized"
+FAILED                                                                   [ 45%]
+tests/e2e/test_order_with_address_flow.py::TestOrderWithAddressFlow::test_order_calculates_total_correctly 
+-------------------------------- live log call --------------------------------
+2025-12-17 14:00:03 [ WARNING] Slow request detected: POST /api/auth/login
+2025-12-17 14:00:03 [    INFO] HTTP Request: POST http://test/api/auth/login "HTTP/1.1 401 Unauthorized"
+FAILED                                                                   [ 48%]
+tests/e2e/test_order_with_address_flow.py::TestOrderWithAddressFlow::test_list_user_addresses 
+-------------------------------- live log call --------------------------------
+2025-12-17 14:00:04 [ WARNING] Slow request detected: POST /api/auth/login
+2025-12-17 14:00:04 [    INFO] HTTP Request: POST http://test/api/auth/login "HTTP/1.1 401 Unauthorized"
+FAILED                                                                   [ 51%]
+tests/e2e/test_product_menu_flow.py::TestProductMenuFlow::test_tc_hu003_01_display_products_menu 
+-------------------------------- live log call --------------------------------
+2025-12-17 14:00:04 [    INFO] Request completed: GET /api/products
+2025-12-17 14:00:04 [    INFO] HTTP Request: GET http://test/api/products "HTTP/1.1 307 Temporary Redirect"
+2025-12-17 14:00:04 [ WARNING] Slow request detected: GET /api/products/
+2025-12-17 14:00:04 [    INFO] HTTP Request: GET http://test/api/products/ "HTTP/1.1 200 OK"
+FAILED                                                                   [ 54%]
+tests/e2e/test_product_menu_flow.py::TestProductMenuFlow::test_tc_hu003_02_scroll_loading_pagination 
+-------------------------------- live log call --------------------------------
+2025-12-17 14:00:04 [    INFO] Request completed: GET /api/products
+2025-12-17 14:00:04 [    INFO] HTTP Request: GET http://test/api/products?skip=0&limit=10 "HTTP/1.1 307 Temporary Redirect"
+2025-12-17 14:00:04 [    INFO] Request completed: GET /api/products/
+2025-12-17 14:00:04 [    INFO] HTTP Request: GET http://test/api/products/?skip=0&limit=10 "HTTP/1.1 200 OK"
+FAILED                                                                   [ 57%]
+tests/e2e/test_product_menu_flow.py::TestProductMenuFlow::test_products_filtered_by_category 
+-------------------------------- live log call --------------------------------
+2025-12-17 14:00:04 [    INFO] Request completed: GET /api/products
+2025-12-17 14:00:04 [    INFO] HTTP Request: GET http://test/api/products "HTTP/1.1 307 Temporary Redirect"
+2025-12-17 14:00:04 [    INFO] Request completed: GET /api/products/
+2025-12-17 14:00:04 [    INFO] HTTP Request: GET http://test/api/products/ "HTTP/1.1 200 OK"
+FAILED                                                                   [ 60%]
+tests/e2e/test_product_menu_flow.py::TestProductMenuFlow::test_products_only_available_shown 
+-------------------------------- live log call --------------------------------
+2025-12-17 14:00:04 [    INFO] Request completed: GET /api/products
+2025-12-17 14:00:04 [    INFO] HTTP Request: GET http://test/api/products "HTTP/1.1 307 Temporary Redirect"
+2025-12-17 14:00:04 [    INFO] Request completed: GET /api/products/
+2025-12-17 14:00:04 [    INFO] HTTP Request: GET http://test/api/products/ "HTTP/1.1 200 OK"
+PASSED                                                                   [ 62%]
+tests/e2e/test_product_menu_flow.py::TestProductMenuFlow::test_product_detail_by_id 
+-------------------------------- live log call --------------------------------
+2025-12-17 14:00:04 [    INFO] Request completed: GET /api/products
+2025-12-17 14:00:04 [    INFO] HTTP Request: GET http://test/api/products "HTTP/1.1 307 Temporary Redirect"
+2025-12-17 14:00:04 [    INFO] Request completed: GET /api/products/
+2025-12-17 14:00:04 [    INFO] HTTP Request: GET http://test/api/products/ "HTTP/1.1 200 OK"
+FAILED                                                                   [ 65%]
+tests/e2e/test_product_menu_flow.py::TestProductMenuFlow::test_products_pagination_limits 
+-------------------------------- live log call --------------------------------
+2025-12-17 14:00:04 [    INFO] Request completed: GET /api/products
+2025-12-17 14:00:04 [    INFO] HTTP Request: GET http://test/api/products?skip=0&limit=5 "HTTP/1.1 307 Temporary Redirect"
+2025-12-17 14:00:04 [    INFO] Request completed: GET /api/products/
+2025-12-17 14:00:04 [    INFO] HTTP Request: GET http://test/api/products/?skip=0&limit=5 "HTTP/1.1 200 OK"
+PASSED                                                                   [ 68%]
+tests/e2e/test_product_menu_flow.py::TestProductMenuFlow::test_empty_products_list_when_no_data 
+-------------------------------- live log call --------------------------------
+2025-12-17 14:00:04 [    INFO] Request completed: GET /api/products
+2025-12-17 14:00:04 [    INFO] HTTP Request: GET http://test/api/products "HTTP/1.1 307 Temporary Redirect"
+2025-12-17 14:00:04 [    INFO] Request completed: GET /api/products/
+2025-12-17 14:00:04 [    INFO] HTTP Request: GET http://test/api/products/ "HTTP/1.1 200 OK"
+FAILED                                                                   [ 71%]
+tests/e2e/test_user_login_flow.py::TestUserLoginFlow::test_tc_hu002_01_valid_credentials_login 
+-------------------------------- live log call --------------------------------
+2025-12-17 14:00:05 [ WARNING] Slow request detected: POST /api/auth/login
+2025-12-17 14:00:05 [    INFO] HTTP Request: POST http://test/api/auth/login "HTTP/1.1 200 OK"
+2025-12-17 14:00:05 [ WARNING] Slow request detected: GET /api/auth/profile
+2025-12-17 14:00:05 [    INFO] HTTP Request: GET http://test/api/auth/profile "HTTP/1.1 200 OK"
+PASSED                                                                   [ 74%]
+tests/e2e/test_user_login_flow.py::TestUserLoginFlow::test_tc_hu002_02_invalid_credentials_error 
+-------------------------------- live log call --------------------------------
+2025-12-17 14:00:06 [ WARNING] Slow request detected: POST /api/auth/login
+2025-12-17 14:00:06 [    INFO] HTTP Request: POST http://test/api/auth/login "HTTP/1.1 401 Unauthorized"
+PASSED                                                                   [ 77%]
+tests/e2e/test_user_login_flow.py::TestUserLoginFlow::test_tc_hu002_03_admin_panel_access 
+-------------------------------- live log call --------------------------------
+2025-12-17 14:00:06 [ WARNING] Slow request detected: POST /api/auth/login
+2025-12-17 14:00:06 [    INFO] HTTP Request: POST http://test/api/auth/login "HTTP/1.1 200 OK"
+2025-12-17 14:00:07 [ WARNING] Slow request detected: GET /api/admin/coupons
+2025-12-17 14:00:07 [    INFO] HTTP Request: GET http://test/api/admin/coupons "HTTP/1.1 200 OK"
+PASSED                                                                   [ 80%]
+tests/e2e/test_user_login_flow.py::TestUserLoginFlow::test_login_with_nonexistent_email 
+-------------------------------- live log call --------------------------------
+2025-12-17 14:00:07 [ WARNING] Slow request detected: POST /api/auth/login
+2025-12-17 14:00:07 [    INFO] HTTP Request: POST http://test/api/auth/login "HTTP/1.1 401 Unauthorized"
+PASSED                                                                   [ 82%]
+tests/e2e/test_user_login_flow.py::TestUserLoginFlow::test_customer_cannot_access_admin_endpoints 
+-------------------------------- live log call --------------------------------
+2025-12-17 14:00:08 [ WARNING] Slow request detected: POST /api/auth/login
+2025-12-17 14:00:08 [    INFO] HTTP Request: POST http://test/api/auth/login "HTTP/1.1 401 Unauthorized"
+FAILED                                                                   [ 85%]
+tests/e2e/test_user_login_flow.py::TestUserLoginFlow::test_login_without_credentials 
+-------------------------------- live log call --------------------------------
+2025-12-17 14:00:08 [ WARNING] Client error: POST /api/auth/login
+2025-12-17 14:00:08 [    INFO] HTTP Request: POST http://test/api/auth/login "HTTP/1.1 422 Unprocessable Entity"
+PASSED                                                                   [ 88%]
+tests/e2e/test_user_registration_flow.py::TestUserRegistrationFlow::test_tc_hu001_01_successful_registration 
+-------------------------------- live log call --------------------------------
+2025-12-17 14:00:09 [ WARNING] Slow request detected: POST /api/auth/register
+2025-12-17 14:00:09 [    INFO] HTTP Request: POST http://test/api/auth/register "HTTP/1.1 200 OK"
+2025-12-17 14:00:09 [ WARNING] Slow request detected: POST /api/auth/login
+2025-12-17 14:00:09 [    INFO] HTTP Request: POST http://test/api/auth/login "HTTP/1.1 200 OK"
+PASSED                                                                   [ 91%]
