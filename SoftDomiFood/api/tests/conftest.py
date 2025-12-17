@@ -5,6 +5,7 @@ import pytest
 import asyncio
 import asyncpg
 import os
+import uuid
 from typing import AsyncGenerator
 from httpx import AsyncClient
 from fastapi import FastAPI
@@ -43,12 +44,12 @@ async def setup_test_db():
 async def test_db_connection(setup_test_db):
     """Conexión a DB de pruebas que dura toda la sesión"""
     conn = await asyncpg.connect(TEST_DATABASE_URL)
-    
+
     # Inicializar esquema
     await init_test_database(conn)
-    
+
     yield conn
-    
+
     await conn.close()
 
 @pytest.fixture(scope="function")
@@ -60,7 +61,7 @@ async def test_db(test_db_connection):
     # Iniciar transacción
     transaction = test_db_connection.transaction()
     await transaction.start()
-    
+
     try:
         yield test_db_connection
     finally:
@@ -83,7 +84,7 @@ def app() -> FastAPI:
 @pytest.fixture
 async def test_client(app: FastAPI) -> AsyncGenerator[AsyncClient, None]:
     """Cliente HTTP async para pruebas de endpoints"""
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    async with AsyncClient(app=app, base_url="http://test", follow_redirects=True) as client:
         yield client
 
 # Authentication fixtures
@@ -92,24 +93,26 @@ async def sample_user(test_db):
     """Crear usuario de prueba y retornar sus datos"""
     from tests.fixtures.data import SAMPLE_USER
     from services.auth_service import get_password_hash
-    
+
+    # Email único con UUID para evitar duplicados
+    unique_email = f"user_{uuid.uuid4().hex[:8]}@test.com"
     hashed_password = get_password_hash(SAMPLE_USER["password"])
-    
+
     user_id = await test_db.fetchval(
         """
         INSERT INTO users (id, email, password, name, phone, role, "createdAt", "updatedAt")
         VALUES (gen_random_uuid(), $1, $2, $3, $4, 'CUSTOMER', NOW(), NOW())
         RETURNING id
         """,
-        SAMPLE_USER["email"],
+        unique_email,
         hashed_password,
         SAMPLE_USER["name"],
         SAMPLE_USER.get("phone")
     )
-    
+
     return {
         "id": str(user_id),
-        "email": SAMPLE_USER["email"],
+        "email": unique_email,
         "password": SAMPLE_USER["password"],  # Password sin hash para login
         "name": SAMPLE_USER["name"],
         "phone": SAMPLE_USER.get("phone"),
@@ -121,23 +124,25 @@ async def sample_admin(test_db):
     """Crear usuario admin de prueba"""
     from tests.fixtures.data import SAMPLE_ADMIN
     from services.auth_service import get_password_hash
-    
+
+    # Email único con UUID para evitar duplicados
+    unique_email = f"admin_{uuid.uuid4().hex[:8]}@test.com"
     hashed_password = get_password_hash(SAMPLE_ADMIN["password"])
-    
+
     admin_id = await test_db.fetchval(
         """
         INSERT INTO users (id, email, password, name, role, "createdAt", "updatedAt")
         VALUES (gen_random_uuid(), $1, $2, $3, 'ADMIN', NOW(), NOW())
         RETURNING id
         """,
-        SAMPLE_ADMIN["email"],
+        unique_email,
         hashed_password,
         SAMPLE_ADMIN["name"]
     )
-    
+
     return {
         "id": str(admin_id),
-        "email": SAMPLE_ADMIN["email"],
+        "email": unique_email,
         "password": SAMPLE_ADMIN["password"],
         "name": SAMPLE_ADMIN["name"],
         "role": "ADMIN"
@@ -157,7 +162,7 @@ async def admin_headers(test_client: AsyncClient, sample_admin):
 async def sample_address(test_db, sample_user):
     """Crear dirección de prueba para usuario"""
     from tests.fixtures.data import SAMPLE_ADDRESS
-    
+
     address_id = await test_db.fetchval(
         """
         INSERT INTO addresses (id, "userId", street, city, state, "zipCode", country, "isDefault", instructions, "createdAt", "updatedAt")
@@ -173,7 +178,7 @@ async def sample_address(test_db, sample_user):
         SAMPLE_ADDRESS["isDefault"],
         SAMPLE_ADDRESS.get("instructions")
     )
-    
+
     return {
         "id": str(address_id),
         **SAMPLE_ADDRESS,
@@ -186,7 +191,7 @@ def mock_rabbitmq(monkeypatch):
     """Mock de RabbitMQ para evitar dependencia en pruebas unitarias"""
     async def mock_publish(order_data):
         return True
-    
+
     monkeypatch.setattr("services.rabbitmq.publish_order", mock_publish)
     return mock_publish
 

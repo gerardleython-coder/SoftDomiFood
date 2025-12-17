@@ -1,10 +1,12 @@
 # 📊 Radiografía AS-IS: SoftDomiFood
 
-> **Fecha:** 15 de diciembre de 2025  
-> **Tipo de análisis:** Diagnóstico arquitectónico sin refactorización  
+> **Fecha:** 15 de diciembre de 2025
+> **Tipo de análisis:** Diagnóstico arquitectónico sin refactorización
 > **Estado:** AS-IS (Estado Actual)
 
 ---
+## https://youtu.be/8Q3Yq15TsK4
+## Link de video
 
 ## 📋 Resumen Ejecutivo
 
@@ -388,12 +390,12 @@ postgres:
   environment:
     POSTGRES_USER: softdomifood_user
     POSTGRES_PASSWORD: softdomifood_pass  # 🔴 HARDCODED
-    
+
 rabbitmq:
   environment:
     RABBITMQ_DEFAULT_USER: admin
     RABBITMQ_DEFAULT_PASS: admin123  # 🔴 HARDCODED
-    
+
 api:
   environment:
     JWT_SECRET: your-super-secret-jwt-key-change-in-production  # 🔴 HARDCODED
@@ -441,7 +443,7 @@ api:
 
 ### Resultado Análisis Bandit (SAST)
 
-**Herramienta:** Bandit 1.7.5  
+**Herramienta:** Bandit 1.7.5
 **Scope:** [qa_automated/tests/security_analysis.py](qa_automated/tests/security_analysis.py)
 
 El proyecto incluye un script de análisis estático de seguridad que ejecuta Bandit sobre el código Python. Actualmente:
@@ -1069,8 +1071,8 @@ for item in order_items:
 
 ---
 
-**Última actualización:** 15 de diciembre de 2025  
-**Autor:** Radiografía AS-IS generada por GitHub Copilot  
+**Última actualización:** 15 de diciembre de 2025
+**Autor:** Radiografía AS-IS generada por GitHub Copilot
 **Próximo paso:** Definir plan TO-BE con priorización de iniciativas
 apps-fileview.texmex_20251203.04_p1
 # 📊 Radiografía AS-IS SoftDomiFood.txt
@@ -1229,4 +1231,3 @@ Mostrando # 📊 Radiografía AS-IS SoftDomiFood.txt.
 - Implementación de monitoreo y alertas (APM, métricas, healthchecks).
 - Pipeline CI/CD automatizando build, test y análisis de seguridad.
 - Plan de higiene de repositorio (limpieza de `venv`, `.gitignore`, dependabot/snyk).
-
