@@ -1,7 +1,0 @@
-# Este archivo mantiene el directorio tests/ en git
-# Coloca aquí tus archivos de test:
-# - test_auth.py
-# - test_products.py
-# - test_orders.py
-# - conftest.py
-

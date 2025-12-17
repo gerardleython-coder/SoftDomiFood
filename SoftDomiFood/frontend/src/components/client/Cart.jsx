@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Trash2, Tag, X } from 'lucide-react';
 import { couponsAPI } from '../../utils/api';
 
-const Cart = ({ cart, onUpdateQuantity, onRemoveFromCart, totalPrice, onCouponApplied, appliedCoupon, toast }) => {
+const Cart = ({ cart, onUpdateQuantity, onRemoveFromCart, totalPrice, onCouponApplied, appliedCoupon, toast, onClose }) => {
   const [couponCode, setCouponCode] = useState('');
   const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
 
@@ -15,7 +15,7 @@ const Cart = ({ cart, onUpdateQuantity, onRemoveFromCart, totalPrice, onCouponAp
     setIsValidatingCoupon(true);
     try {
       const response = await couponsAPI.validate(couponCode.toUpperCase().trim());
-      
+
       if (response.valid) {
         const couponData = {
           code: couponCode.toUpperCase().trim(),
@@ -23,7 +23,7 @@ const Cart = ({ cart, onUpdateQuantity, onRemoveFromCart, totalPrice, onCouponAp
           amount: response.coupon.amount,
           percentage: response.coupon.percentage,
         };
-        
+
         onCouponApplied(couponData);
         toast?.success(`¡Cupón aplicado! ${couponData.discountType === 'PERCENTAGE' ? `${couponData.percentage}% de descuento` : `$${couponData.amount} de descuento`}`);
         setCouponCode('');
@@ -46,7 +46,7 @@ const Cart = ({ cart, onUpdateQuantity, onRemoveFromCart, totalPrice, onCouponAp
 
   const calculateDiscount = () => {
     if (!appliedCoupon) return 0;
-    
+
     if (appliedCoupon.discountType === 'PERCENTAGE') {
       return (totalPrice * appliedCoupon.percentage) / 100;
     } else {
@@ -60,7 +60,18 @@ const Cart = ({ cart, onUpdateQuantity, onRemoveFromCart, totalPrice, onCouponAp
   if (cart.length === 0) {
     return (
       <div className="bg-white rounded-xl shadow-lg p-6">
-        <h3 className="text-xl font-semibold text-gray-800 mb-4">Carrito</h3>
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-xl font-semibold text-gray-800">Carrito</h3>
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600 transition-colors"
+              title="Cerrar carrito"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          )}
+        </div>
         <p className="text-gray-500 text-center py-8">Tu carrito está vacío</p>
       </div>
     );
@@ -68,7 +79,18 @@ const Cart = ({ cart, onUpdateQuantity, onRemoveFromCart, totalPrice, onCouponAp
 
   return (
     <div className="bg-white rounded-xl shadow-lg p-6 sticky top-24">
-      <h3 className="text-xl font-semibold text-gray-800 mb-4">Carrito</h3>
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-xl font-semibold text-gray-800">Carrito</h3>
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 transition-colors"
+            title="Cerrar carrito"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
+      </div>
 
       <div className="space-y-3 mb-6 max-h-64 overflow-y-auto">
         {cart.map(item => (
@@ -108,7 +130,7 @@ const Cart = ({ cart, onUpdateQuantity, onRemoveFromCart, totalPrice, onCouponAp
           <Tag className="w-4 h-4 text-orange-600 mr-2" />
           <span className="text-sm font-medium text-gray-700">¿Tienes un cupón?</span>
         </div>
-        
+
         {appliedCoupon ? (
           <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg p-3">
             <div className="flex items-center">
@@ -116,8 +138,8 @@ const Cart = ({ cart, onUpdateQuantity, onRemoveFromCart, totalPrice, onCouponAp
               <div>
                 <p className="text-sm font-semibold text-green-800">{appliedCoupon.code}</p>
                 <p className="text-xs text-green-600">
-                  {appliedCoupon.discountType === 'PERCENTAGE' 
-                    ? `${appliedCoupon.percentage}% de descuento` 
+                  {appliedCoupon.discountType === 'PERCENTAGE'
+                    ? `${appliedCoupon.percentage}% de descuento`
                     : `$${appliedCoupon.amount} de descuento`}
                 </p>
               </div>
@@ -158,14 +180,14 @@ const Cart = ({ cart, onUpdateQuantity, onRemoveFromCart, totalPrice, onCouponAp
             <span className="text-gray-600">Subtotal:</span>
             <span className="text-gray-800">${totalPrice.toFixed(2)}</span>
           </div>
-          
+
           {appliedCoupon && discount > 0 && (
             <div className="flex justify-between items-center text-sm">
               <span className="text-green-600">Descuento:</span>
               <span className="text-green-600">-${discount.toFixed(2)}</span>
             </div>
           )}
-          
+
           <div className="flex justify-between items-center pt-2 border-t">
             <span className="text-lg font-semibold text-gray-800">Total:</span>
             <span className="text-2xl font-bold text-orange-600">${finalTotal.toFixed(2)}</span>

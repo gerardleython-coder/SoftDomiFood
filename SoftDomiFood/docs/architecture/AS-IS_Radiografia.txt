@@ -1,0 +1,1232 @@
+# 📊 Radiografía AS-IS: SoftDomiFood
+
+> **Fecha:** 15 de diciembre de 2025  
+> **Tipo de análisis:** Diagnóstico arquitectónico sin refactorización  
+> **Estado:** AS-IS (Estado Actual)
+
+---
+
+## 📋 Resumen Ejecutivo
+
+### Estado General
+
+**SoftDomiFood** es un sistema de pedidos de domicilio (delivery) con arquitectura de microservicios distribuidos. El proyecto presenta una **base sólida** con buenas prácticas de containerización, separación de responsabilidades y documentación exhaustiva orientada a desarrollo con IA. Sin embargo, **existen múltiples problemas críticos** relacionados con:
+
+- **Duplicación de código** entre `api/` (Python/FastAPI) y `backend/` (Node.js/TypeScript)
+- **Inconsistencia en esquemas Prisma** entre `backend/` y `worker/`
+- **Credenciales hardcodeadas** en múltiples archivos
+- **Falta de manejo robusto de errores** y observabilidad
+- **Ausencia de tests de integración y E2E** (solo tests unitarios de auth)
+- **No existe CI/CD pipeline** para automatizar despliegues
+
+**Tecnologías:** Python 3.11, FastAPI, Node.js 20+, TypeScript, React 18, PostgreSQL 15, RabbitMQ 3, Docker, Prisma ORM
+
+---
+
+### 🔴 5 Riesgos Principales
+
+| # | Riesgo | Severidad | Impacto |
+|---|--------|-----------|---------|
+| **1** | **Duplicación masiva de servicios** (api/ vs backend/): dos APIs que implementan la misma funcionalidad en diferentes lenguajes | **CRÍTICO** | Mantenibilidad, deuda técnica exponencial, confusión del equipo |
+| **2** | **Credenciales hardcodeadas** en docker-compose.yml, scripts y código (JWT_SECRET, DB passwords, RabbitMQ) | **CRÍTICO** | Vulnerabilidad de seguridad P0, exposición de secretos |
+| **3** | **Inconsistencias en esquemas de datos** entre backend/prisma y worker/prisma (`paymentMethod` existe solo en worker) | **ALTO** | Errores en runtime, desincronización de datos |
+| **4** | **Falta de pipeline CI/CD** y automatización de pruebas | **ALTO** | Riesgo de regresiones, deployments manuales propensos a errores |
+| **5** | **Logging con print/console.log sin estructura**: no hay observabilidad centralizada ni métricas | **MEDIO** | Dificultad para debugging en producción, sin trazabilidad |
+
+---
+
+### ✅ 5 Quick Wins
+
+| # | Quick Win | Esfuerzo | ROI |
+|---|-----------|----------|-----|
+| **1** | **Crear archivo `.env.example`** con todas las variables necesarias y documentarlas | **S** | Alto - Mejora onboarding y seguridad |
+| **2** | **Implementar logger centralizado** (Winston/Pino en Node.js, structlog en Python) reemplazando print/console.log | **M** | Alto - Mejora observabilidad inmediata |
+| **3** | **Agregar health checks HTTP** en API (/health con DB ping) y Worker | **S** | Medio - Mejora monitoreo |
+| **4** | **Sincronizar esquemas Prisma** entre backend/ y worker/ (unificar paymentMethod) | **S** | Alto - Previene bugs críticos |
+| **5** | **Configurar pre-commit hooks** con linters (ESLint, Flake8, Prettier) | **S** | Alto - Calidad de código consistente |
+
+---
+
+## 🎯 Contexto y Stack
+
+### Stack Tecnológico
+
+#### Backend / APIs
+
+| Componente | Tecnología | Versión | Propósito |
+|------------|------------|---------|-----------|
+| **API Principal (Producer)** | Python + FastAPI | 3.11 + 0.104.1 | REST API asíncrona, publica eventos a RabbitMQ |
+| **Backend Alternativo** ⚠️ | Node.js + Express + TypeScript | 20+ + 4.18.2 | **DUPLICADO** - misma funcionalidad que API |
+| **Worker (Consumer)** | Node.js + TypeScript | 20+ + 5.3.3 | Consumidor de cola RabbitMQ, procesa pedidos |
+| **ORM (Backend/Worker)** | Prisma | 5.7.1 | Modelado de datos, migraciones |
+| **Database** | PostgreSQL | 15-alpine | Base de datos relacional |
+| **Message Broker** | RabbitMQ | 3-management | Cola de mensajes AMQP |
+
+#### Frontend
+
+| Componente | Tecnología | Versión | Propósito |
+|------------|------------|---------|-----------|
+| **Cliente (Usuarios)** | React + Vite | 18.2.0 + 4.4.5 | SPA para clientes finales |
+| **Admin Panel** | React + Vite | 18.2.0 + 4.4.5 | Panel de administración |
+| **UI** | Tailwind CSS + Lucide Icons | 3.3.3 | Estilos y componentes |
+
+#### Infraestructura y DevOps
+
+| Componente | Tecnología | Versión |
+|------------|------------|---------|
+| **Containerización** | Docker + Docker Compose | Latest |
+| **Testing** | pytest (Python) | 7.4.3 |
+| **Security Analysis** | Bandit (SAST) | 1.7.5 |
+| **Package Managers** | npm, pip | Latest |
+
+---
+
+### Mapa del Repositorio
+
+```
+SoftDomiFood/
+│
+├── api/                          # 🐍 Producer API (FastAPI/Python)
+│   ├── routers/                  # Endpoints REST
+│   │   ├── auth.py               # Autenticación (register/login/profile)
+│   │   ├── products.py           # CRUD productos
+│   │   ├── orders.py             # Creación y gestión de pedidos
+│   │   ├── admin.py              # Panel administrativo
+│   │   └── addresses.py          # Direcciones de entrega
+│   ├── services/                 # Lógica de negocio
+│   │   ├── auth_service.py       # JWT, bcrypt, validaciones
+│   │   ├── database_service.py   # Queries directas con asyncpg
+│   │   └── rabbitmq.py           # Publicador de mensajes
+│   ├── main.py                   # Entrypoint FastAPI (lifespan events)
+│   ├── database.py               # Configuración SQLAlchemy async
+│   ├── models.py                 # Enums y modelos (referencia)
+│   ├── init_db.py                # Script SQL para crear tablas
+│   └── seed_data.py              # Datos de ejemplo
+│
+├── backend/                      # ⚠️ DUPLICADO - Node.js/Express/Prisma
+│   ├── src/
+│   │   ├── controllers/          # Lógica de negocio
+│   │   ├── middleware/           # auth.middleware.ts
+│   │   ├── routes/               # Definición de rutas
+│   │   └── index.ts              # Entrypoint Express
+│   └── prisma/
+│       └── schema.prisma         # Esquema Prisma (sin paymentMethod)
+│
+├── worker/                       # 🔄 Consumer (Node.js/TypeScript)
+│   ├── src/
+│   │   └── index.ts              # Consumidor RabbitMQ, actualiza órdenes
+│   └── prisma/
+│       └── schema.prisma         # Esquema Prisma (CON paymentMethod)
+│
+├── frontend/                     # 👥 Cliente Web (React/Vite)
+│   ├── src/
+│   │   ├── components/
+│   │   ├── pages/                # ClientPage
+│   │   ├── hooks/                # useAuth, useToast
+│   │   └── utils/api.js          # Axios client
+│   └── Dockerfile
+│
+├── admin-frontend/               # 👨‍💼 Panel Admin (React/Vite)
+│   ├── src/
+│   │   ├── components/admin/
+│   │   ├── pages/                # AdminPage, AdminLogin
+│   │   └── utils/api.js
+│   └── Dockerfile
+│
+├── qa_automated/                 # 🧪 Tests automatizados
+│   ├── tests/
+│   │   ├── test_funcionalidad_auth.py    # Tests unitarios de auth
+│   │   ├── security_analysis.py           # SAST con Bandit
+│   │   └── load_test_auth.py              # Tests de carga básicos
+│   └── Dockerfile.qa
+│
+├── database/                     # 💾 Backups y datos
+│   └── backups/
+│       └── initial_data.sql      # Backup inicial
+│
+├── scripts/                      # 📜 Scripts PowerShell
+│   ├── backup-database.ps1
+│   ├── restore-database.ps1
+│   └── initialize-database.ps1
+│
+├── docker-compose.yml            # 🐳 Orquestación de servicios
+├── AI_WORKFLOW.md                # 🤖 Metodología AI-First
+└── start-local.ps1 / stop-local.ps1  # Scripts de inicio rápido
+```
+
+#### Responsabilidad de Cada Módulo
+
+| Módulo | Responsabilidad | Estado |
+|--------|-----------------|--------|
+| **api/** | Producer REST API, publica pedidos a RabbitMQ, maneja auth/productos/órdenes | ✅ Activo y funcional |
+| **backend/** | **DUPLICADO** - mismas responsabilidades que api/ pero en Node.js | ⚠️ Código muerto o en transición |
+| **worker/** | Consumer de RabbitMQ, actualiza estado de pedidos asíncronamente | ✅ Activo |
+| **frontend/** | Interfaz de usuario para clientes | ✅ Activo |
+| **admin-frontend/** | Panel de administración | ✅ Activo |
+| **qa_automated/** | Pruebas automatizadas y análisis de seguridad | ✅ Activo |
+| **database/** | Backups y scripts SQL | ✅ Soporte |
+| **scripts/** | Automatización de tareas administrativas | ✅ Soporte |
+
+---
+
+## 🏗️ Arquitectura AS-IS
+
+### Diagrama Textual (C4 Simplificado)
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                    CONTEXTO DEL SISTEMA                           │
+│                                                                    │
+│  ┌──────────┐                                  ┌──────────┐      │
+│  │  Cliente │ ──────────────────────────────▶ │  Admin   │      │
+│  │  Final   │  HTTP (3000)     HTTP (3001)    │  Panel   │      │
+│  └──────────┘                                  └──────────┘      │
+│       │                                              │            │
+│       │                                              │            │
+│       ▼                                              ▼            │
+│  ┌──────────────────────────────────────────────────────┐       │
+│  │           API REST (FastAPI:5000)                    │       │
+│  │  - Autenticación (JWT)                               │       │
+│  │  - CRUD Productos                                    │       │
+│  │  - Gestión de Pedidos                                │       │
+│  │  - Direcciones                                       │       │
+│  └──────────────────────────────────────────────────────┘       │
+│       │                         │                                │
+│       │ asyncpg                 │ aio-pika                       │
+│       ▼                         ▼                                │
+│  ┌────────────┐          ┌────────────┐                         │
+│  │ PostgreSQL │          │  RabbitMQ  │                         │
+│  │    :5432   │          │   :5672    │                         │
+│  └────────────┘          └────────────┘                         │
+│       ▲                         │                                │
+│       │ Prisma                  │ amqplib                        │
+│       │                         ▼                                │
+│  ┌──────────────────────────────────────┐                       │
+│  │     Worker (Node.js/TypeScript)      │                       │
+│  │  - Consume cola order_queue          │                       │
+│  │  - Actualiza estado: PREPARING       │                       │
+│  └──────────────────────────────────────┘                       │
+│                                                                   │
+│  ⚠️ NOTA: Existe un backend/ (Node.js) duplicado sin uso claro  │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### Flujo Principal: Crear Pedido
+
+```
+1. Usuario (frontend:3000)
+   │
+   ▼
+2. POST /api/orders [JWT Token]
+   │  - Valida token
+   │  - Valida productos y dirección
+   │  - Calcula total
+   │
+   ▼
+3. Inserta en DB (asyncpg)
+   │  orders, order_items
+   │
+   ▼
+4. Publica mensaje a RabbitMQ
+   │  Queue: order_queue
+   │  Payload: { orderId, userId, items, total, addressId }
+   │
+   ▼
+5. Worker consume mensaje
+   │  - Simula preparación (5 segundos)
+   │  - Actualiza estado: PREPARING
+   │
+   ▼
+6. Cliente puede consultar estado
+   GET /api/orders/:id
+```
+
+### Patrones Detectados
+
+| Patrón | Implementación | Calificación |
+|--------|----------------|--------------|
+| **Producer-Consumer** | API publica a RabbitMQ, Worker consume | ✅ Correcto |
+| **Repository Pattern** | Parcial en `services/database_service.py` | ⚠️ Podría mejorar |
+| **Middleware** | JWT verificación en `get_current_user` | ✅ Bien implementado |
+| **Containerización** | Docker Compose con health checks | ✅ Excelente |
+| **Event-Driven** | RabbitMQ para desacoplar procesamiento | ✅ Correcto |
+| **Monorepo** | Múltiples servicios en un repo | ⚠️ Con duplicaciones |
+
+---
+
+## 🔍 Calidad de Código
+
+### Hallazgos por Categoría
+
+#### 1. Duplicación / Código Muerto
+
+| Archivo/Módulo | Evidencia | Impacto |
+|----------------|-----------|---------|
+| **backend/** vs **api/** | Carpeta backend/ completa implementa las mismas funcionalidades que api/ (auth, products, orders, addresses, payments) | **CRÍTICO** - Confusión, mantenimiento doble, riesgo de divergencia |
+| [backend/src/controllers/auth.controller.ts](backend/src/controllers/auth.controller.ts) | Duplica lógica de [api/routers/auth.py](api/routers/auth.py) | Deuda técnica alta |
+| [backend/prisma/schema.prisma](backend/prisma/schema.prisma) vs [worker/prisma/schema.prisma](worker/prisma/schema.prisma) | Esquemas casi idénticos pero con diferencias (paymentMethod) | Errores potenciales en producción |
+
+**Recomendación P0:** Decidir stack único (Python o Node.js) y eliminar el otro. Si backend/ está en desuso, documentarlo y archivarlo.
+
+---
+
+#### 2. Complejidad Ciclomática
+
+| Archivo | Función/Método | Líneas | Problema |
+|---------|----------------|--------|----------|
+| [api/routers/orders.py](api/routers/orders.py#L27-L134) | `create_new_order` | ~107 | Función "Dios": validación, cálculo, persistencia y publicación en un solo método |
+| [worker/src/index.ts](worker/src/index.ts#L55-L182) | `startConsumer` | ~127 | Manejo de conexión, errores y consumo en un solo bloque |
+| [api/init_db.py](api/init_db.py) | Script completo | 240 | SQL embebido como string literal (difícil de mantener) |
+
+**Recomendaciones:**
+- Refactorizar `create_new_order` en funciones más pequeñas: `validate_order`, `calculate_total`, `persist_order`, `publish_to_queue`
+- Separar lógica de conexión RabbitMQ en módulo reutilizable
+- Migrar SQL de init_db.py a migraciones Alembic (Python) o Prisma (Node.js)
+
+---
+
+#### 3. Code Smells
+
+**Hardcoded Values:**
+
+```python
+# api/services/auth_service.py:12
+SECRET_KEY = os.getenv("JWT_SECRET", "your-super-secret-jwt-key-change-in-production")
+```
+🔴 **Problema:** Default inseguro expuesto en código
+
+```yaml
+# docker-compose.yml:22-23
+RABBITMQ_DEFAULT_USER: admin
+RABBITMQ_DEFAULT_PASS: admin123
+```
+🔴 **Problema:** Credenciales hardcodeadas
+
+**Uso de `any` en TypeScript:**
+
+```typescript
+// worker/src/index.ts:40
+} catch (error: any) {
+```
+⚠️ **Problema:** Pierde type safety, debería ser `unknown` o crear tipo específico
+
+**Print/Console.log en producción:**
+
+```python
+# api/main.py:24
+print("🚀 Inicializando base de datos...")
+```
+```typescript
+// worker/src/index.ts:27
+console.log(`📦 Procesando pedido: ${message.orderId}`);
+```
+⚠️ **Problema:** No hay logger estructurado, dificulta auditoría y debugging
+
+---
+
+#### 4. Acoplamiento y Cohesión
+
+| Módulo | Problema | Nivel de Acoplamiento |
+|--------|----------|-----------------------|
+| [api/routers/orders.py](api/routers/orders.py) | Importa directamente `services.database_service` y `services.rabbitmq` | Medio-Alto |
+| [worker/src/index.ts](worker/src/index.ts) | Lógica de negocio mezclada con infraestructura RabbitMQ | Alto |
+
+**Recomendaciones:**
+- Implementar **Dependency Injection** (usar FastAPI Depends de forma más consistente)
+- Separar capa de infraestructura (RabbitMQ, DB) de lógica de negocio
+- Crear interfaces/abstracciones para servicios externos
+
+---
+
+#### 5. Manejo de Errores
+
+**Problemas detectados:**
+
+```python
+# api/main.py:38-44
+except Exception as e:
+    print(f"⚠️  Error al verificar/inicializar base de datos: {e}")
+    import traceback
+    traceback.print_exc()
+    print("   Continuando de todas formas...")
+```
+🔴 **Problema:** Swallow exceptions sin propagación, puede ocultar fallos críticos
+
+```typescript
+// worker/src/index.ts:103-108
+} catch (error: any) {
+    console.error(`❌ Error procesando pedido ${message.orderId}:`, error);
+    throw error;
+}
+```
+⚠️ **Problema:** No hay retry logic ni dead-letter queue para mensajes fallidos
+
+**Recomendaciones:**
+- Implementar middleware global de manejo de errores en FastAPI
+- Agregar dead-letter queue en RabbitMQ para mensajes fallidos
+- Implementar circuit breaker para dependencias externas
+
+---
+
+## 🛡️ Seguridad
+
+### Análisis de Vulnerabilidades
+
+#### Severidad CRÍTICA
+
+| ID | Vulnerabilidad | Ubicación | CWE |
+|----|----------------|-----------|-----|
+| **S1** | **Secretos hardcodeados** | [docker-compose.yml](docker-compose.yml#L8-L10), [docker-compose.yml](docker-compose.yml#L22-L23), [docker-compose.yml](docker-compose.yml#L50) | CWE-798 |
+| **S2** | **JWT_SECRET con default inseguro** | [api/services/auth_service.py](api/services/auth_service.py#L12), [backend/src/controllers/auth.controller.ts](backend/src/controllers/auth.controller.ts#L52) | CWE-798 |
+| **S3** | **No hay validación de CORS específica** | [api/main.py](api/main.py#L72-L80) permite `allow_methods=["*"]` y `allow_headers=["*"]` | CWE-942 |
+
+**Evidencias:**
+
+```yaml
+# docker-compose.yml
+postgres:
+  environment:
+    POSTGRES_USER: softdomifood_user
+    POSTGRES_PASSWORD: softdomifood_pass  # 🔴 HARDCODED
+    
+rabbitmq:
+  environment:
+    RABBITMQ_DEFAULT_USER: admin
+    RABBITMQ_DEFAULT_PASS: admin123  # 🔴 HARDCODED
+    
+api:
+  environment:
+    JWT_SECRET: your-super-secret-jwt-key-change-in-production  # 🔴 HARDCODED
+```
+
+---
+
+#### Severidad ALTA
+
+| ID | Vulnerabilidad | Ubicación | Detalle |
+|----|----------------|-----------|---------|
+| **S4** | **SQL como strings literales** | [api/init_db.py](api/init_db.py#L17-L122) | Potencial SQL injection si se modifica dinámicamente |
+| **S5** | **No hay rate limiting** | Todos los endpoints REST | Vulnerable a DDoS y brute force |
+| **S6** | **Contraseñas sin validación fuerte** | [api/routers/auth.py](api/routers/auth.py), [backend/src/controllers/auth.controller.ts](backend/src/controllers/auth.controller.ts) | No hay requisitos mínimos (longitud, complejidad) |
+
+---
+
+#### Severidad MEDIA
+
+| ID | Vulnerabilidad | Detalle |
+|----|----------------|---------|
+| **S7** | **Logs exponen información sensible** | Contraseñas de DB en logs de conexión (parcialmente mitigado con sanitización en [api/services/rabbitmq.py](api/services/rabbitmq.py#L22)) |
+| **S8** | **No hay HTTPS enforcement** | Aplicación corre en HTTP sin redirección HTTPS |
+| **S9** | **Dependencias sin actualizar** | No hay Dependabot ni renovate configurado |
+
+---
+
+### Manejo de Secretos y Configuraciones
+
+**Estado Actual:**
+
+- ❌ **No existe archivo `.env.example`** con documentación de variables
+- ⚠️ **Variables de entorno en docker-compose.yml** (debería usar .env file)
+- ✅ **`.gitignore` incluye `.env`** correctamente
+- ❌ **No hay integración con secrets manager** (AWS Secrets Manager, Azure Key Vault, HashiCorp Vault)
+
+**Recomendaciones P1:**
+
+1. Crear `.env.example` con todas las variables necesarias
+2. Migrar credenciales a archivos `.env` locales (no commitear)
+3. Para producción: usar secrets manager (Kubernetes Secrets, Docker Secrets, etc.)
+4. Implementar rotación automática de secretos (especialmente JWT_SECRET)
+
+---
+
+### Resultado Análisis Bandit (SAST)
+
+**Herramienta:** Bandit 1.7.5  
+**Scope:** [qa_automated/tests/security_analysis.py](qa_automated/tests/security_analysis.py)
+
+El proyecto incluye un script de análisis estático de seguridad que ejecuta Bandit sobre el código Python. Actualmente:
+
+- ✅ Script implementado y documentado
+- ⚠️ No hay evidencia de ejecución reciente en los resultados del proyecto
+- ❌ No está integrado en CI/CD
+
+**Recomendación:** Ejecutar Bandit regularmente y agregar al pipeline CI.
+
+---
+
+## ✅ Pruebas (Testing)
+
+### Cobertura Actual
+
+| Tipo de Prueba | Implementado | Cobertura Estimada | Archivos |
+|----------------|--------------|---------------------|----------|
+| **Unitarias** | ✅ Parcial | ~15% (solo auth) | [qa_automated/tests/test_funcionalidad_auth.py](qa_automated/tests/test_funcionalidad_auth.py) |
+| **Integración** | ❌ No existe | 0% | - |
+| **E2E** | ❌ No existe | 0% | - |
+| **Carga** | ⚠️ Básico | N/A | [qa_automated/tests/load_test_auth.py](qa_automated/tests/load_test_auth.py) |
+| **Seguridad (SAST)** | ✅ Sí | 100% del código Python | [qa_automated/tests/security_analysis.py](qa_automated/tests/security_analysis.py) |
+
+---
+
+### Tests Existentes
+
+#### ✅ Tests Funcionales de Autenticación
+
+**Archivo:** [qa_automated/tests/test_funcionalidad_auth.py](qa_automated/tests/test_funcionalidad_auth.py)
+
+**Criterios validados:**
+1. ✅ Registro de usuario con token JWT válido
+2. ✅ Login con credenciales válidas
+3. ✅ Rechazo de credenciales inválidas (401)
+4. ✅ Endpoint de perfil con autenticación
+5. ✅ Rechazo de peticiones sin token
+6. ✅ Validación de bcrypt en contraseñas
+7. ✅ Token JWT contiene userId y role
+8. ✅ Expiración de token (7 días)
+9. ✅ Prevención de usuarios duplicados
+
+**Calidad:** ⭐⭐⭐⭐ (4/5) - Muy completos para el módulo de auth
+
+---
+
+#### ⚠️ Tests de Carga
+
+**Archivo:** [qa_automated/tests/load_test_auth.py](qa_automated/tests/load_test_auth.py)
+
+**Limitaciones:**
+- Solo valida endpoint de login
+- No hay métricas de rendimiento capturadas
+- No simula tráfico concurrente realista
+
+---
+
+### Gaps Críticos en Testing
+
+| Gap | Impacto | Prioridad |
+|-----|---------|-----------|
+| **No hay tests de productos** (CRUD) | Alto - funcionalidad core sin validar | P1 |
+| **No hay tests de pedidos** (flujo completo) | Crítico - flow principal sin cobertura | P0 |
+| **No hay tests de Worker** (consumidor RabbitMQ) | Alto - procesamiento asíncrono sin validar | P1 |
+| **No hay tests de integración DB** | Medio - pueden haber bugs en queries | P2 |
+| **No hay tests E2E de frontend** | Medio - UX sin validación automatizada | P2 |
+| **No hay tests de contratos** (API-Frontend) | Medio - pueden haber desalineaciones | P2 |
+
+---
+
+### Estrategia de Mocks y Fixtures
+
+**Actual:**
+- ✅ [qa_automated/tests/conftest.py](qa_automated/tests/conftest.py) configura SQLite en memoria para tests
+- ✅ Fixtures de pytest bien estructurados (`test_client`, `async_client`, `sample_user_data`)
+- ⚠️ No hay mocking de RabbitMQ (se necesita para tests de orders)
+
+**Recomendaciones:**
+- Usar `testcontainers` para PostgreSQL y RabbitMQ en tests de integración
+- Implementar mocks de servicios externos (RabbitMQ) con `pytest-mock`
+- Crear fixtures de datos maestros (productos, usuarios) reutilizables
+
+---
+
+## 🚀 CI/CD y DevEx
+
+### Estado Actual
+
+| Componente | Estado | Evidencia |
+|------------|--------|-----------|
+| **GitHub Actions** | ❌ No existe | No hay carpeta `.github/workflows/` |
+| **Jenkins** | ❌ No existe | No hay `Jenkinsfile` |
+| **GitLab CI** | ❌ No existe | No hay `.gitlab-ci.yml` |
+| **Pre-commit hooks** | ❌ No configurado | No hay `.pre-commit-config.yaml` |
+| **Linters** | ⚠️ Mencionados pero no automatizados | AI_WORKFLOW.md menciona ESLint/Prettier pero no hay configs |
+
+**Implicaciones:**
+- 🔴 Deployments manuales propensos a errores humanos
+- 🔴 No hay validación automática de tests antes de merge
+- 🔴 Calidad de código inconsistente entre contribuidores
+- 🔴 No hay análisis de seguridad automático (Bandit debe ejecutarse manualmente)
+
+---
+
+### Scripts Existentes
+
+**PowerShell Scripts (Windows):**
+
+| Script | Propósito | Calidad |
+|--------|-----------|---------|
+| [start-local.ps1](start-local.ps1) | Inicia PostgreSQL y RabbitMQ en Docker | ✅ Bueno |
+| [stop-local.ps1](stop-local.ps1) | Detiene servicios | ✅ Bueno |
+| [clean-docker.ps1](clean-docker.ps1) | Limpia contenedores y volúmenes | ✅ Bueno |
+| [scripts/backup-database.ps1](scripts/backup-database.ps1) | Backup de PostgreSQL | ✅ Bueno |
+| [scripts/restore-database.ps1](scripts/restore-database.ps1) | Restaura backup | ✅ Bueno |
+| [scripts/initialize-database.ps1](scripts/initialize-database.ps1) | Inicializa DB | ✅ Bueno |
+
+**Python Scripts:**
+
+| Script | Propósito | Calidad |
+|--------|-----------|---------|
+| [force_create_tables.py](force_create_tables.py) | Fuerza creación de tablas | ⚠️ Solución temporal |
+| [verify_addresses_table.py](verify_addresses_table.py) | Verifica tabla addresses | ⚠️ Debugging temporal |
+
+**Observaciones:**
+- ✅ Scripts bien documentados con emojis y mensajes claros
+- ⚠️ Solo para Windows (falta soporte Linux/Mac)
+- ❌ No hay `Makefile` o script universal multiplataforma
+
+---
+
+### Onboarding y Documentación
+
+**Archivos de documentación:**
+
+| Archivo | Contenido | Calidad |
+|---------|-----------|---------|
+| **README.md** (raíz) | Descripción general, setup, comandos Docker | ⚠️ Existe pero referencia archivos faltantes |
+| [AI_WORKFLOW.md](AI_WORKFLOW.md) | Metodología AI-First, prompts, gobernanza | ⭐⭐⭐⭐⭐ Excelente |
+| [qa_automated/README.md](qa_automated/README.md) | Guía de tests | ✅ Bueno |
+| [database/README.md](database/README.md) | Guía de backups | ✅ Bueno |
+
+**Hallazgos:**
+
+✅ **Fortalezas:**
+- Documentación exhaustiva del workflow con IA
+- Contexto tecnológico muy claro
+- Ejemplos de uso en scripts
+
+❌ **Gaps:**
+- Falta `SETUP_INSTRUCTIONS.md` (referenciado pero no existe)
+- Falta `DESARROLLO-LOCAL.md` (referenciado pero no existe)
+- No hay diagrama de arquitectura visual (solo textual)
+- No hay guía de contribución (CONTRIBUTING.md)
+- No hay troubleshooting guide
+
+---
+
+### Package Management
+
+**Estado de lockfiles:**
+
+| Proyecto | Lockfile | Estado |
+|----------|----------|--------|
+| **frontend/** | ✅ [package-lock.json](frontend/package-lock.json) | Existe |
+| **admin-frontend/** | ❌ No existe | Falta |
+| **backend/** | ❌ No existe | Falta |
+| **worker/** | ✅ [package-lock.json](worker/package-lock.json) | Existe |
+| **api/** | ❌ No tiene (pip) | Normal para Python sin poetry/pipenv |
+
+**Recomendaciones:**
+- Generar lockfiles faltantes (`npm ci`)
+- Considerar migrar Python a `poetry` o `pipenv` para lockfiles reproducibles
+- Configurar Dependabot para actualizaciones automáticas de dependencias
+
+---
+
+## 📊 Observabilidad
+
+### Logging
+
+**Estado Actual:**
+
+| Componente | Método | Nivel | Problema |
+|------------|--------|-------|----------|
+| **api/** | `print()` | Básico | ❌ No estructurado, no captura metadata |
+| **worker/** | `console.log()` | Básico | ❌ No estructurado, no captura metadata |
+| **backend/** | `console.error()` | Básico | ❌ No estructurado |
+
+**Evidencia:**
+
+```python
+# api/main.py:24
+print("🚀 Inicializando base de datos...")
+print("✅ Base de datos inicializada correctamente")
+```
+
+```typescript
+// worker/src/index.ts:27
+console.log(`📦 Procesando pedido: ${message.orderId}`);
+console.error('❌ Error de conexión RabbitMQ:', err);
+```
+
+**Problemas:**
+- No hay niveles de log (DEBUG, INFO, WARN, ERROR)
+- No hay timestamps estructurados
+- No hay correlation IDs para tracing
+- Difícil de parsear con herramientas de agregación (ELK, Splunk, Datadog)
+
+**Recomendaciones P1:**
+
+**Para Python (api/):**
+```python
+import structlog
+logger = structlog.get_logger()
+logger.info("database.initialized", tables_created=5)
+```
+
+**Para Node.js (worker/, backend/):**
+```typescript
+import pino from 'pino';
+const logger = pino();
+logger.info({ orderId: message.orderId }, 'Processing order');
+```
+
+---
+
+### Métricas
+
+**Estado:** ❌ **No implementado**
+
+- No hay exportación de métricas (Prometheus, StatsD)
+- No hay dashboards (Grafana)
+- No hay alertas configuradas
+
+**Métricas críticas faltantes:**
+- Latencia de endpoints (p50, p95, p99)
+- Tasa de errores (HTTP 5xx)
+- Duración de procesamiento de pedidos en Worker
+- Tamaño de cola RabbitMQ
+- Conexiones activas PostgreSQL
+
+---
+
+### Tracing Distribuido
+
+**Estado:** ❌ **No implementado**
+
+- No hay OpenTelemetry / Jaeger / Zipkin
+- Imposible rastrear requests entre API → RabbitMQ → Worker
+- Difícil debugging de problemas de performance
+
+**Recomendación P2:** Implementar OpenTelemetry con contexto propagado en headers HTTP y mensajes RabbitMQ.
+
+---
+
+### Health Checks
+
+**Estado:** ⚠️ **Parcial**
+
+| Componente | Health Check | Calidad |
+|------------|--------------|---------|
+| **PostgreSQL** | ✅ [docker-compose.yml](docker-compose.yml#L16-L20) `pg_isready` | Bueno |
+| **RabbitMQ** | ✅ [docker-compose.yml](docker-compose.yml#L33-L37) `rabbitmq-diagnostics ping` | Bueno |
+| **API** | ❌ No existe endpoint `/health` | Falta |
+| **Worker** | ❌ No expone health check | Falta |
+| **Frontend** | ❌ No aplicable | N/A |
+
+**Recomendación P1:** Agregar endpoints `/health` y `/ready` en API que verifiquen:
+- Conexión a PostgreSQL
+- Conexión a RabbitMQ
+- Estado de dependencias críticas
+
+---
+
+## ⚡ Performance y Escalabilidad
+
+### Hot Paths Identificados
+
+| Flujo | Latencia Estimada | Optimización Posible |
+|-------|-------------------|----------------------|
+| **POST /api/orders** | ~100-300ms | ✅ Ya es asíncrono con asyncpg |
+| **Worker processing** | ~5s (simulado) | ⚠️ Hardcoded delay (debería ser configurable) |
+| **GET /api/products** | ~50-100ms | ⚠️ No hay caché (Redis recomendado) |
+
+---
+
+### Queries y N+1
+
+**Análisis de [api/services/database_service.py](api/services/database_service.py):**
+
+✅ **Buenas prácticas detectadas:**
+- Uso de `asyncpg` (alto rendimiento)
+- Prepared statements implícitos (previene SQL injection)
+
+⚠️ **Problemas potenciales:**
+
+```python
+# Potencial N+1 en get_order_with_items (hipotético)
+for item in order_items:
+    product = await get_product_by_id(item['productId'])  # N queries
+```
+
+**Recomendación:** Revisar queries complejas y usar JOINs o eager loading cuando sea posible.
+
+---
+
+### Caching
+
+**Estado:** ❌ **No implementado**
+
+- No hay Redis
+- No hay caché HTTP (Cache-Control headers)
+- No hay caché de queries
+
+**Oportunidades de caché:**
+
+| Dato | TTL Recomendado | Beneficio |
+|------|-----------------|-----------|
+| Lista de productos | 5-10 minutos | Reduce carga DB en 70% |
+| Información de usuario | 1-5 minutos | Mejora latencia de `/profile` |
+| Configuración app | 30 minutos | Reduce acceso a DB de configuración |
+
+**Recomendación P2:** Agregar Redis como servicio en docker-compose y cachear datos frecuentemente consultados.
+
+---
+
+### Cargas I/O
+
+**Análisis:**
+
+| Operación | Tipo I/O | Optimización |
+|-----------|----------|--------------|
+| **Consulta productos** | DB Read | ✅ Async, ⚠️ Sin caché |
+| **Crear pedido** | DB Write + MQ Publish | ✅ Async, ✅ Desacoplado |
+| **Procesamiento Worker** | DB Update | ✅ Async, ⚠️ Sin concurrency control |
+
+**Riesgos de escalabilidad:**
+
+1. **Worker single-threaded:** Solo procesa 1 mensaje a la vez
+   - **Solución:** Aumentar `channel.prefetch(N)` o escalar workers horizontalmente
+
+2. **No hay connection pooling explícito en api/:**
+   - **Estado actual:** SQLAlchemy y asyncpg usan pools por defecto
+   - **Recomendación:** Configurar tamaño de pool explícitamente
+
+3. **RabbitMQ sin clustering:**
+   - **Riesgo:** Single point of failure
+   - **Recomendación P3:** Configurar RabbitMQ cluster para HA
+
+---
+
+## 📉 Deuda Técnica Priorizada
+
+### Tabla de Deuda Técnica
+
+| ID | Item | Evidencia | Impacto | Prioridad | Recomendación | Esfuerzo |
+|----|------|-----------|---------|-----------|---------------|----------|
+| **DT-1** | Eliminar duplicación backend/ vs api/ | Carpetas completas duplicadas | ⚠️ Crítico | **P0** | Decidir stack único (Python recomendado por consistencia), archivar el otro | **L** |
+| **DT-2** | Sincronizar esquemas Prisma | [backend/prisma/schema.prisma](backend/prisma/schema.prisma) vs [worker/prisma/schema.prisma](worker/prisma/schema.prisma) | ⚠️ Alto | **P0** | Unificar schema (agregar paymentMethod a backend) | **S** |
+| **DT-3** | Migrar secretos a variables de entorno | [docker-compose.yml](docker-compose.yml) líneas 8-10, 22-23, 50 | 🔴 Crítico | **P0** | Crear `.env` files, usar secrets manager en prod | **M** |
+| **DT-4** | Implementar logger estructurado | Todos los `print()` y `console.log()` | ⚠️ Alto | **P1** | Usar structlog (Python) y pino (Node.js) | **M** |
+| **DT-5** | Refactorizar create_new_order | [api/routers/orders.py](api/routers/orders.py#L27-L134) | ⚠️ Medio | **P1** | Separar en funciones: validate, calculate, persist, publish | **M** |
+| **DT-6** | Agregar health checks HTTP | API y Worker no tienen `/health` | ⚠️ Alto | **P1** | Implementar endpoints con DB/MQ ping | **S** |
+| **DT-7** | Crear pipeline CI/CD | No existe | ⚠️ Alto | **P1** | GitHub Actions con jobs: lint, test, build, deploy | **L** |
+| **DT-8** | Implementar rate limiting | Todos los endpoints vulnerables a DDoS | 🔴 Alto | **P1** | Usar `slowapi` (FastAPI) o nginx con `limit_req` | **M** |
+| **DT-9** | Agregar tests de integración | Solo existen tests unitarios de auth | ⚠️ Alto | **P1** | Testcontainers para PostgreSQL y RabbitMQ | **L** |
+| **DT-10** | Migrar init_db.py a migraciones | [api/init_db.py](api/init_db.py) con SQL embebido | ⚠️ Medio | **P2** | Usar Alembic (Python) o Prisma Migrate | **M** |
+| **DT-11** | Configurar pre-commit hooks | No existe `.pre-commit-config.yaml` | ⚠️ Medio | **P2** | Hooks con black, flake8, eslint, prettier | **S** |
+| **DT-12** | Implementar caché con Redis | No hay caché de productos/usuarios | ⚠️ Medio | **P2** | Agregar Redis a docker-compose, cachear queries frecuentes | **M** |
+| **DT-13** | Agregar dead-letter queue | Worker no maneja mensajes fallidos | ⚠️ Medio | **P2** | Configurar DLQ en RabbitMQ con retry logic | **S** |
+| **DT-14** | Crear tests E2E frontend | No hay tests de UI | ⚠️ Bajo | **P2** | Playwright o Cypress para flujos críticos | **L** |
+| **DT-15** | Implementar tracing distribuido | No hay OpenTelemetry | ⚠️ Bajo | **P3** | OpenTelemetry + Jaeger para debugging distribuido | **L** |
+
+**Leyenda Esfuerzo:**
+- **S** (Small): 1-3 días
+- **M** (Medium): 1-2 semanas
+- **L** (Large): 2-4 semanas
+
+---
+
+## 🎯 Backlog de Mejora (Para TO-BE)
+
+### Iniciativas Estratégicas
+
+#### 🏗️ Arquitectura y Consolidación
+
+1. **[CONSOLIDACIÓN] Unificar stack a Python (FastAPI) + TypeScript (Worker/Frontend)**
+   - Eliminar carpeta `backend/` duplicada
+   - Documentar decisión en ADR (Architecture Decision Record)
+   - Migrar cualquier funcionalidad única si existe
+
+2. **[ESQUEMA] Sincronizar y versionar esquema de datos**
+   - Unificar Prisma schemas entre backend/ y worker/
+   - Implementar migraciones versionadas con Prisma Migrate o Alembic
+   - Establecer proceso de code review para cambios de schema
+
+3. **[MODULARIZACIÓN] Separar capas de aplicación**
+   - Aplicar Clean Architecture: Domain → Application → Infrastructure → Presentation
+   - Crear módulos independientes por bounded context (Orders, Products, Auth)
+   - Implementar Dependency Injection con protocolos/interfaces
+
+---
+
+#### 🔒 Seguridad
+
+4. **[SECRETOS] Implementar gestión segura de secretos**
+   - Crear `.env.example` documentado
+   - Integrar con AWS Secrets Manager / Azure Key Vault para producción
+   - Implementar rotación automática de JWT_SECRET
+
+5. **[AUTH] Fortalecer autenticación**
+   - Agregar validación de contraseñas fuertes (zxcvbn)
+   - Implementar 2FA opcional para admins
+   - Agregar rate limiting en endpoints de auth (5 intentos / minuto)
+
+6. **[PERMISOS] Implementar RBAC granular**
+   - Definir permisos por rol (CUSTOMER, ADMIN, DELIVERY)
+   - Middleware de autorización con decoradores `@require_role("ADMIN")`
+   - Auditoría de acciones de administradores
+
+---
+
+#### 🧪 Testing y Calidad
+
+7. **[TESTING] Alcanzar 80% de cobertura de código**
+   - Tests unitarios de productos, pedidos, direcciones
+   - Tests de integración con testcontainers (PostgreSQL + RabbitMQ)
+   - Tests E2E con Playwright para flujos críticos
+
+8. **[CI/CD] Implementar pipeline automatizado**
+   - GitHub Actions con stages: lint → test → build → deploy
+   - Code quality gates (SonarQube)
+   - Deploy automático a staging en merge a `develop`
+
+9. **[LINTING] Estandarizar código**
+   - Pre-commit hooks con black, flake8, isort (Python)
+   - Pre-commit hooks con ESLint, Prettier (TypeScript)
+   - Configurar editorconfig para consistencia
+
+---
+
+#### 📊 Observabilidad
+
+10. **[LOGGING] Implementar logging estructurado**
+    - Migrar a structlog (Python) y pino (Node.js)
+    - Agregar correlation IDs en todos los logs
+    - Centralizar logs en ELK Stack o CloudWatch
+
+11. **[MÉTRICAS] Exportar métricas de negocio y técnicas**
+    - Instrumentar con Prometheus (API) y prom-client (Worker)
+    - Crear dashboards Grafana con SLIs/SLOs
+    - Alertas en PagerDuty para incidentes críticos
+
+12. **[TRACING] Implementar distributed tracing**
+    - OpenTelemetry SDK en API y Worker
+    - Jaeger para visualización de traces
+    - Propagación de contexto en headers y mensajes RabbitMQ
+
+---
+
+#### ⚡ Performance
+
+13. **[CACHE] Implementar estrategia de caché**
+    - Agregar Redis como servicio
+    - Cachear lista de productos (TTL: 5 min)
+    - Cachear información de usuario (TTL: 2 min)
+    - Implementar cache invalidation en actualizaciones
+
+14. **[ESCALABILIDAD] Preparar para horizontal scaling**
+    - Externalizar sesiones a Redis
+    - Configurar RabbitMQ en cluster (HA)
+    - Implementar health checks para Kubernetes readiness/liveness
+
+15. **[ASYNC] Optimizar procesamiento asíncrono**
+    - Aumentar prefetch del Worker para paralelismo
+    - Implementar batch processing para operaciones masivas
+    - Agregar circuit breaker para dependencias externas (resilience4j/pybreaker)
+
+---
+
+#### 🚀 DevEx y Operaciones
+
+16. **[DOCS] Completar documentación técnica**
+    - Crear `SETUP_INSTRUCTIONS.md` faltante
+    - Diagrama de arquitectura visual (C4 model)
+    - Troubleshooting guide con errores comunes
+    - CONTRIBUTING.md con guía de contribución
+
+17. **[IaC] Infrastructure as Code**
+    - Terraform para provisioning de infraestructura
+    - Helm charts para deployment en Kubernetes
+    - Scripts de disaster recovery
+
+18. **[MONITOREO] Implementar APM**
+    - New Relic / Datadog APM para profiling
+    - Monitoreo de queries lentas en PostgreSQL
+    - Alertas proactivas (uso de memoria, latencia, errores)
+
+---
+
+## 🏆 Top 10 Hallazgos Críticos
+
+1. **🔴 Duplicación masiva:** carpetas `api/` y `backend/` implementan la misma funcionalidad (P0)
+2. **🔴 Credenciales hardcodeadas:** JWT_SECRET, DB passwords en código y docker-compose (P0)
+3. **🔴 Inconsistencia en schemas Prisma:** paymentMethod solo existe en worker/ (P0)
+4. **🟡 Sin CI/CD:** deployments manuales, sin validación automática de tests (P1)
+5. **🟡 Logging no estructurado:** print/console.log sin niveles ni timestamps (P1)
+6. **🟡 Sin health checks HTTP:** imposible monitoreo de servicios en producción (P1)
+7. **🟡 Cobertura de tests baja:** solo auth tiene tests, faltan productos/pedidos (P1)
+8. **🟡 Sin rate limiting:** endpoints vulnerables a DDoS y brute force (P1)
+9. **🟢 Función "Dios":** `create_new_order` con 107 líneas, múltiples responsabilidades (P2)
+10. **🟢 Sin caché:** productos y usuarios no se cachean, carga innecesaria en DB (P2)
+
+---
+
+## 🎯 Top 3 Próximos Pasos para TO-BE
+
+### 1. 🔥 Consolidación de Stack (2-3 semanas, P0)
+
+**Objetivo:** Eliminar duplicación y definir arquitectura única.
+
+**Acciones:**
+- [ ] Auditar funcionalidades de `backend/` vs `api/` para confirmar 100% duplicación
+- [ ] Documentar decisión de stack único en ADR (Architecture Decision Record)
+- [ ] Archivar `backend/` en branch separado (no eliminar historial)
+- [ ] Actualizar documentación (README, AI_WORKFLOW.md) reflejando stack final
+- [ ] Comunicar cambio a todo el equipo
+
+**Entregable:** Stack unificado Python (FastAPI) + TypeScript (Worker), carpeta backend/ archivada.
+
+---
+
+### 2. 🔒 Seguridad de Secretos (1 semana, P0)
+
+**Objetivo:** Eliminar credenciales hardcodeadas y gestionar secretos de forma segura.
+
+**Acciones:**
+- [ ] Crear `.env.example` con todas las variables documentadas
+- [ ] Migrar variables de `docker-compose.yml` a `.env` file
+- [ ] Generar JWT_SECRET aleatorio fuerte (openssl rand -base64 64)
+- [ ] Actualizar `.gitignore` para excluir `.env` (ya existe, validar)
+- [ ] Documentar proceso de setup de secretos en SETUP_INSTRUCTIONS.md
+- [ ] Para producción: plan de migración a secrets manager (AWS/Azure/GCP)
+
+**Entregable:** Secretos externalizados, `.env.example` documentado, sin credenciales en código.
+
+---
+
+### 3. 🧪 Testing y CI/CD Básico (2-3 semanas, P1)
+
+**Objetivo:** Alcanzar 50% de cobertura de tests y automatizar validación en cada commit.
+
+**Acciones:**
+- [ ] Escribir tests unitarios de productos (CRUD)
+- [ ] Escribir tests unitarios de pedidos (create_order)
+- [ ] Configurar GitHub Actions con workflow básico:
+  - Job 1: Lint (flake8, eslint)
+  - Job 2: Tests (pytest, jest si aplica)
+  - Job 3: Security scan (Bandit)
+- [ ] Configurar pre-commit hooks locales (black, prettier)
+- [ ] Agregar badge de CI status en README.md
+
+**Entregable:** Pipeline CI funcional, 50% cobertura de tests, pre-commit hooks configurados.
+
+---
+
+## 📎 Anexos
+
+### Herramientas Recomendadas
+
+**Observabilidad:**
+- Logging: structlog (Python), pino (Node.js)
+- Métricas: Prometheus + Grafana
+- Tracing: OpenTelemetry + Jaeger
+- APM: New Relic / Datadog
+
+**Seguridad:**
+- Secrets: AWS Secrets Manager, Azure Key Vault, HashiCorp Vault
+- SAST: Bandit (Python), ESLint security plugin (JS/TS)
+- Dependencias: Dependabot, Snyk
+
+**Testing:**
+- Unit: pytest (Python), Jest (Node.js)
+- Integration: testcontainers
+- E2E: Playwright, Cypress
+- Load: Locust, k6
+
+**CI/CD:**
+- GitHub Actions (recomendado por simplicidad)
+- GitLab CI (si self-hosted)
+- Jenkins (enterprise)
+
+---
+
+### Referencias
+
+- **Arquitectura:** [C4 Model](https://c4model.com/)
+- **Seguridad:** [OWASP Top 10](https://owasp.org/www-project-top-ten/)
+- **Testing:** [Testing Pyramid](https://martinfowler.com/articles/practical-test-pyramid.html)
+- **Observability:** [The Three Pillars of Observability](https://www.oreilly.com/library/view/distributed-systems-observability/9781492033431/)
+- **Clean Architecture:** [Clean Architecture by Robert C. Martin](https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html)
+
+---
+
+## 📝 Notas Finales
+
+### Fortalezas del Proyecto
+
+1. ✅ **Documentación AI-First excepcional** ([AI_WORKFLOW.md](AI_WORKFLOW.md))
+2. ✅ **Arquitectura event-driven correctamente implementada** (RabbitMQ)
+3. ✅ **Containerización completa** con health checks
+4. ✅ **Separación Frontend Cliente/Admin** bien pensada
+5. ✅ **Scripts de automatización** útiles para desarrollo local
+6. ✅ **Tests de auth muy completos** con validación rigurosa
+
+### Áreas de Mejora Críticas
+
+1. 🔴 **Eliminar duplicación de código** (backend/ vs api/)
+2. 🔴 **Gestionar secretos de forma segura**
+3. 🔴 **Implementar observabilidad robusta**
+4. 🔴 **Automatizar testing y deployment**
+5. 🔴 **Sincronizar esquemas de datos**
+
+---
+
+**Última actualización:** 15 de diciembre de 2025  
+**Autor:** Radiografía AS-IS generada por GitHub Copilot  
+**Próximo paso:** Definir plan TO-BE con priorización de iniciativas
+apps-fileview.texmex_20251203.04_p1
+# 📊 Radiografía AS-IS SoftDomiFood.txt
+Mostrando # 📊 Radiografía AS-IS SoftDomiFood.txt.
+
+# Resumen ejecutivo (página 1)
+- Proyecto multi-servicio (FastAPI + RabbitMQ + worker Node + dos frontends Vite + backend Express legado) orientado a pedidos. Arquitectura funcional pero con solapamientos (API Python vs Express), configuraciones inseguras por defecto y escasa observabilidad.
+- La orquestación Docker está definida, pero se ejecuta en modo dev (hot-reload, volúmenes, sin hardening) y expone credenciales estáticas (`admin123`, `your-super-secret-jwt-key-change-in-production`).
+- Se versiona un `venv` completo y `__pycache__`, lo que infla el repo y dificulta mantenibilidad.
+- La API Python tiene validaciones básicas y separación por routers/servicios; el backend Express duplica responsabilidades y carece de validaciones y manejo de errores robusto.
+- Frontends almacenan tokens en `localStorage`, comparten endpoints sin separación clara cliente/admin y usan hooks de autenticación simulada, lo que genera riesgos de sesión y coherencia.
+- Testing: carpeta `qa_automated` con scripts y pruebas (auth, seguridad, carga), pero no hay integración CI ni métricas de cobertura reportadas en el repo.
+- Observabilidad limitada a logs de consola; sin métricas, tracing ni alertas.
+- Rendimiento: consultas Prisma sencillas sin índices ni paginación; el worker procesa de a un mensaje, lo que limita throughput.
+- DX: README muy completo, scripts de QA y Docker Compose ayudan al onboarding, pero falta linters/formatters configurados y manejo de entornos por `env`.
+
+# Estado general
+- Stack mixto con dos backends activos (FastAPI y Express) y dos frontends Vite; worker Node consume RabbitMQ. Se privilegia contenedores.
+- Calidad desigual: FastAPI mejor estructurada; Express carece de validaciones y controles de flujo; frontends usan mocks en hooks de auth.
+- Seguridad: credenciales por defecto expuestas, JWT secretos débiles por fallback, tokens en `localStorage`, sin CSRF/ratelimiting.
+- Pruebas: existe suite QA dockerizada, pero no integrada a pipeline y sin evidencia de cobertura.
+
+# 5 riesgos principales
+- Credenciales y secretos hardcodeados/publicados (`docker-compose.yml`, `README`, JWT fallback). P1.
+- Doble backend con rutas similares sin gateway ni consistencia (FastAPI vs Express) → riesgo de desviación funcional y superficie de ataque duplicada. P1.
+- Falta de validación/limpieza de datos y manejo de errores centralizado en Express (`product.controller.ts`, `order.controller.ts`). P1.
+- Tokens en `localStorage` y sin controles de sesión/CSRF; hooks de auth simulados → riesgo de abuso y spoofing. P1.
+- Observabilidad y monitoreo inexistentes; fallos en cola/RabbitMQ podrían pasar desapercibidos. P2.
+
+# 5 quick wins
+- Sustituir secretos por variables de entorno seguras y `.env` no versionado; revocar credenciales por defecto. (S)
+- Añadir validaciones y esquemas (zod/express-validator) en todas las rutas de Express; manejo de errores centralizado. (S)
+- Activar linters/formatters (ESLint/Prettier para Node/React, Ruff/Black para Python) y pipelines de CI básicos. (M)
+- Mover tokens a `httpOnly` cookies en front o al menos namespacing y expiración + logout; eliminar hooks de auth simulados. (M)
+- Agregar healthchecks/alertas y logging estructurado para API/worker; capturar fallos de RabbitMQ. (S)
+
+# Contexto y stack
+- Lenguajes: Python 3.11 (FastAPI), TypeScript/Node 20 (worker, backend Express), JavaScript/React (frontends Vite).
+- Frameworks: FastAPI, Express, Prisma ORM, amqplib (RabbitMQ), React + Tailwind, axios.
+- Build: Vite para frontends; tsx/tsc para Node servicios; Docker/Docker Compose como entorno principal.
+- DB: PostgreSQL 15-alpine; Prisma schemas en backend/worker; SQLAlchemy async en FastAPI.
+- Mensajería: RabbitMQ 3-management.
+- Testing: pytest + httpx + pytest-asyncio; scripts `qa_automated`.
+
+# Mapa del repositorio
+- `SoftDomiFood/api`: API principal FastAPI (routers, servicios DB, RabbitMQ, modelos).
+- `SoftDomiFood/backend`: API Express/Prisma (legado) con controladores/rutas.
+- `SoftDomiFood/worker`: Consumer RabbitMQ en Node/TypeScript.
+- `SoftDomiFood/frontend`: Front cliente React/Vite.
+- `SoftDomiFood/admin-frontend`: Front admin React/Vite.
+- `SoftDomiFood/qa_automated`: Infra y pruebas automatizadas.
+- `database/`: backups SQL.
+- Scripts PowerShell para DB y orquestación; `docker-compose.yml` raíz para todos los servicios.
+
+# Árbol resumido de carpetas
+- `api/` (FastAPI: routers, services, models)
+- `backend/` (Express + Prisma)
+- `worker/` (RabbitMQ consumer)
+- `frontend/` y `admin-frontend/` (React/Vite)
+- `qa_automated/` (pytest + docker)
+- `database/backups/` (SQL)
+- `scripts/` y `.ps1` utilitarios
+
+# Responsabilidad de cada módulo/capa
+- API FastAPI: autenticación JWT, productos, pedidos, addresses, publicación a RabbitMQ.
+- Backend Express: similar dominio (auth/products/orders/payments), sin integración RabbitMQ; parece legacy o alternativa.
+- Worker: consumo de cola `order_queue`, actualización de estado de pedidos en DB.
+- Front cliente/admin: UI, consumo de API, gestión de token local.
+- QA automated: ejecución de tests funcionales/seguridad/carga en contenedores.
+
+# Arquitectura AS-IS
+- Diagrama textual:
+  - Cliente web (Vite React) ↔ API FastAPI (`/api/*`) ↔ PostgreSQL; publica mensajes a RabbitMQ → Worker Node actualiza pedidos.
+  - Admin web similar.
+  - Backend Express paralelo expone `/api/*` con Prisma sobre mismo Postgres (posible conflicto).
+  - Docker Compose orquesta Postgres + RabbitMQ + api + worker + dos frontends; sin gateway.
+- Flujo principal (request → capas → datos):
+  1. Front → axios (`VITE_API_URL`) → FastAPI routers.
+  2. Router valida token (HTTPBearer), delega a services DB (asyncpg/SQLAlchemy) → Postgres.
+  3. En creación de pedido, publica en RabbitMQ; worker consume y actualiza estado en Postgres.
+  4. Legacy Express expone rutas CRUD directas Prisma → Postgres (sin cola).
+
+# Calidad de código
+- Hallazgos:
+  - Validaciones parciales en Express: rutas `product.controller.ts` y `order.controller.ts` no sanitizan/valida tipos ni límites; uso directo de body. (`backend/src/controllers/*.ts`)
+  - Manejo de errores genérico, sin códigos específicos ni logs estructurados; captura `any`. (`backend/src/controllers/*`, `worker/src/index.ts`)
+  - Hooks de auth en front simulados, no integran real backend → incoherencia de estado. (`frontend/src/hooks/useAuth.js`, `admin-frontend/src/hooks/useAuth.js`)
+  - Prisma schema sin índices/paginación; posibles consultas completas. (`backend/prisma/schema.prisma`)
+  - Versión del repo incluye `api/venv` y `__pycache__`, afectando limpieza.
+- Duplicación / complejidad / anti-patrones:
+  - Duplicación de dominio y rutas entre FastAPI y Express (dos backends).
+  - Token secret fallback a `'secret'` en Express y a default débil en FastAPI.
+  - Uso de `localStorage` compartiendo `token`/`clientToken`/`adminToken` sin aislamiento.
+
+# Seguridad
+- Hallazgos + severidad:
+  - P1: Credenciales y secretos hardcodeados en `docker-compose.yml` y `README` (DB, RabbitMQ, JWT). Sin rotación.
+  - P1: JWT secret fallback débil (`process.env.JWT_SECRET || 'secret'`) en Express; default en FastAPI (`your-super-secret...`). Riesgo de token forgery.
+  - P1: Tokens en `localStorage`, sin expiración/refresh ni CSRF protection. (`frontend/src/utils/api.js`)
+  - P2: Sin rate limiting, ni lockout en login; bcrypt con salt por defecto pero sin políticas de password.
+  - P2: Worker expone URL de RabbitMQ en logs (aunque mascara pass en algunos casos).
+- Manejo de secretos y configuraciones:
+  - `.env` no usado; secretos en compose y código.
+  - No hay gestor de secretos ni separación dev/prod.
+
+# Pruebas
+- Qué existe: carpeta `qa_automated/tests` (auth funcional, seguridad `bandit`, carga `locust`/httpx); scripts Docker (`run_qa.sh/.ps1`, `Dockerfile.qa`).
+- Qué falta: integración CI, cobertura reportada, tests para frontends y worker, smoke tests para Express.
+- Recomendaciones: integrar pipeline CI (GitHub Actions) ejecutando QA, agregar fixtures semilla y mocks de RabbitMQ/DB, medir coverage.
+
+# CI/CD y DevEx
+- No se encontró pipeline CI/CD en repo. Scripts docker y QA ayudan local.
+- Sin linters/formatters configurados (ESLint/Prettier, Ruff/Black). Sin husky/pre-commit.
+- Onboarding: README detallado, docs locales (`DESARROLLO-LOCAL.md`, `SETUP_INSTRUCTIONS.md`); scripts `.ps1` facilitan base de datos.
+
+# Observabilidad
+- Logging básico `print`/`console.log`; sin correlación, niveles ni trazas.
+- Sin métricas, tracing o alertas. No hay healthchecks más allá de endpoint `/api/health` y docker healthchecks para DB/RabbitMQ.
+
+# Performance
+- Prisma y SQLAlchemy sin índices ni paginación; riesgo de scans completos.
+- Worker procesa 1 mensaje a la vez (`prefetch(1)`) → throughput limitado.
+- `Math.random` en pagos simulados y `setTimeout` en worker introducen latencia artificial.
+
+# Deuda técnica priorizada
+- P1: Gestión de secretos insegura y hardcodeada.
+- P1: Doble backend sin consolidación → mantenimiento y seguridad complejos.
+- P1: Falta de validaciones/errores en Express y front auth simulada.
+- P2: Falta de observabilidad y CI.
+- P2: Repo con dependencias binarias (`venv`, `__pycache__`) versionadas.
+
+# Tabla: Item | Evidencia | Impacto | Prioridad | Recomendación | Esfuerzo (S/M/L)
+| Item | Evidencia | Impacto | Prioridad | Recomendación | Esfuerzo |
+| --- | --- | --- | --- | --- | --- |
+| Secretos hardcodeados | `docker-compose.yml`, fallback JWT en `auth.controller.ts`, `auth_service.py` | Riesgo de comprometer DB/RabbitMQ/JWT | P1 | Externalizar en `.env` seguros y rotar credenciales | S |
+| Doble backend sin gateway | `api/main.py` vs `backend/src/index.ts` | Divergencia funcional y superficie de ataque duplicada | P1 | Definir uno como fuente única o introducir gateway/versionado | M |
+| Validación insuficiente Express | `product.controller.ts`, `order.controller.ts` | Inyecciones/lógica inválida posible | P1 | Añadir esquemas/zod y manejo de errores centralizado | S |
+| Tokens en localStorage y hooks simulados | `frontend/src/utils/api.js`, `hooks/useAuth.js` | Secuestro de sesión/CSRF | P1 | Migrar a cookies httpOnly o storage segregado + auth real | M |
+| Sin CI ni linters | Ausencia de pipelines; `package.json` sin lint | Calidad inconsistente, bugs no detectados | P2 | Configurar ESLint/Prettier/Ruff y pipeline mínima | S |
+| Observabilidad limitada | Logs `print/console`, sin métricas | Incidentes invisibles | P2 | Agregar logging estructurado y healthchecks/alertas | S |
+| Repo con `venv` y cachés | `api/venv`, `__pycache__` | Peso del repo, riesgo seguridad dependencias | P2 | Eliminar del control y usar `.gitignore` | S |
+
+# Backlog de mejora (para TO-BE)
+- Consolidar backend (elegir FastAPI o Express) y definir contratos API versionados.
+- Implementar gestión de secretos segura (.env por entorno, vault) y rotación de credenciales.
+- Añadir validaciones y sanitización exhaustiva en Express o reemplazarlo.
+- Incorporar autenticación real en frontends, almacenamiento seguro de tokens y roles segregados.
+- Configurar CI/CD con tests QA y linters; agregar coverage gates.
+- Introducir observabilidad: logging estructurado, métricas (Prometheus), tracing (OpenTelemetry).
+- Optimizar base de datos: índices, paginación en listados, migraciones gestionadas.
+- Escalar worker: aumentar prefetch/concurrencia, manejo de reintentos y DLQ.
+
+# Lista de iniciativas (sin implementarlas aún)
+- Hardening de configuración (secrets, envs, Docker) y políticas de acceso.
+- Refactor de capa de autenticación/autorización unificada con renovación de tokens.
+- Implementación de monitoreo y alertas (APM, métricas, healthchecks).
+- Pipeline CI/CD automatizando build, test y análisis de seguridad.
+- Plan de higiene de repositorio (limpieza de `venv`, `.gitignore`, dependabot/snyk).
+
