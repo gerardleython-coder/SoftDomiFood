@@ -62,7 +62,7 @@ async def get_all_orders_admin(current_user: dict = Depends(get_current_user)):
     user_role = current_user.get("role")
     if user_role != "ADMIN":
         raise HTTPException(status_code=403, detail="Admin access required")
-    
+
     orders = await get_all_orders()
     return {"orders": orders}
 
@@ -76,15 +76,15 @@ async def update_order_status_admin(
     user_role = current_user.get("role")
     if user_role != "ADMIN":
         raise HTTPException(status_code=403, detail="Admin access required")
-    
+
     valid_statuses = ["PENDING", "CONFIRMED", "PREPARING", "READY", "ON_DELIVERY", "DELIVERED", "CANCELLED"]
     if request.status not in valid_statuses:
         raise HTTPException(status_code=400, detail="Invalid status")
-    
+
     order = await update_order_status(order_id, request.status)
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    
+
     return {
         "message": "Order status updated successfully",
         "order": order
@@ -99,12 +99,12 @@ async def create_new_product(
     user_role = current_user.get("role")
     if user_role != "ADMIN":
         raise HTTPException(status_code=403, detail="Admin access required")
-    
+
     # Validar categoría
     valid_categories = ["SALCHIPAPAS", "BEBIDAS", "ADICIONALES", "COMBOS"]
     if request.category not in valid_categories:
         raise HTTPException(status_code=400, detail=f"Invalid category. Must be one of: {', '.join(valid_categories)}")
-    
+
     product = await create_product(
         name=request.name,
         description=request.description,
@@ -113,10 +113,10 @@ async def create_new_product(
         image=request.image,
         is_available=request.isAvailable
     )
-    
+
     if not product:
         raise HTTPException(status_code=500, detail="Error creating product")
-    
+
     return {
         "message": "Product created successfully",
         "product": product
@@ -132,13 +132,13 @@ async def update_existing_product(
     user_role = current_user.get("role")
     if user_role != "ADMIN":
         raise HTTPException(status_code=403, detail="Admin access required")
-    
+
     # Validar categoría si se proporciona
     if request.category is not None:
         valid_categories = ["SALCHIPAPAS", "BEBIDAS", "ADICIONALES", "COMBOS"]
         if request.category not in valid_categories:
             raise HTTPException(status_code=400, detail=f"Invalid category. Must be one of: {', '.join(valid_categories)}")
-    
+
     product = await update_product(
         product_id=product_id,
         name=request.name,
@@ -148,10 +148,10 @@ async def update_existing_product(
         image=request.image,
         is_available=request.isAvailable
     )
-    
+
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
-    
+
     return {
         "message": "Product updated successfully",
         "product": product
@@ -163,7 +163,7 @@ async def get_all_customers(current_user: dict = Depends(get_current_user)):
     user_role = current_user.get("role")
     if user_role != "ADMIN":
         raise HTTPException(status_code=403, detail="Admin access required")
-    
+
     customers = await get_all_customers_with_addresses()
     return {"customers": customers}
 
@@ -227,7 +227,7 @@ async def admin_update_coupon(coupon_id: str, request: UpdateCouponRequest):
                 return datetime.fromisoformat(value + ":00")
             except Exception:
                 raise HTTPException(status_code=400, detail="Fechas inválidas: usar formato ISO yyyy-MM-ddTHH:mm")
-    
+
     fields = {}
     if request.description is not None: fields["description"] = request.description
     if request.discountType is not None:
@@ -267,4 +267,28 @@ async def admin_delete_coupon(coupon_id: str):
     if not ok:
         raise HTTPException(status_code=404, detail="Coupon not found")
     return {"message": "Coupon deleted"}
+# Reviews (admin)
+@router.get("/reviews")
+async def admin_get_all_reviews(current_user: dict = Depends(get_current_user)):
+    """Listar todas las reseñas del sistema (solo admin)"""
+    user_role = current_user.get("role")
+    if user_role != "ADMIN":
+        raise HTTPException(status_code=403, detail="Admin access required")
 
+    from services.database_service import get_all_reviews
+    reviews = await get_all_reviews()
+    return {"reviews": reviews}
+
+
+@router.delete("/reviews/{review_id}")
+async def admin_delete_review(review_id: str, current_user: dict = Depends(get_current_user)):
+    """Eliminar reseña por id (solo admin)"""
+    user_role = current_user.get("role")
+    if user_role != "ADMIN":
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    from services.database_service import delete_review
+    ok = await delete_review(review_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Review not found")
+    return {"message": "Review deleted"}
