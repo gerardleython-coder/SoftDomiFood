@@ -14,7 +14,7 @@ const ReviewsManagement = ({ reviews = [], onDelete, isLoading = false }) => {
     // Filtrar por búsqueda (nombre de usuario o producto)
     if (searchTerm) {
       const search = searchTerm.toLowerCase();
-      filtered = filtered.filter(r => 
+      filtered = filtered.filter(r =>
         r.user_name?.toLowerCase().includes(search) ||
         r.product_name?.toLowerCase().includes(search) ||
         r.user_email?.toLowerCase().includes(search)
@@ -61,8 +61,10 @@ const ReviewsManagement = ({ reviews = [], onDelete, isLoading = false }) => {
   };
 
   const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('es-CO', {
+    const dateWithTz = dateString.endsWith('Z') ? dateString : dateString + 'Z';
+    const date = new Date(dateWithTz);
+    return date.toLocaleString('es-CO', {
+      timeZone: 'America/Bogota',
       year: 'numeric',
       month: 'short',
       day: 'numeric',
@@ -84,7 +86,7 @@ const ReviewsManagement = ({ reviews = [], onDelete, isLoading = false }) => {
       {/* Controles de filtro */}
       <div className="bg-white p-4 rounded-lg shadow space-y-4">
         <h3 className="font-semibold text-gray-900">Filtros y búsqueda</h3>
-        
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Búsqueda */}
           <input

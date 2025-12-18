@@ -147,25 +147,25 @@ async def create_order(
                     """
                     INSERT INTO orders (
                         id, "userId", "addressId", status, total, "paymentMethod", notes,
-                        coupon_code, discount_applied, "createdAt", "updatedAt"
+                        coupon_code, discount_applied, "scheduledFor", "createdAt", "updatedAt"
                     )
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
                     """,
                     order_id, user_id, address_id, status, total, payment_method, notes,
-                    coupon_code, discount_applied
+                    coupon_code, discount_applied, scheduled_for
                 )
             else:
                 order_id = await conn.fetchval(
                     """
                     INSERT INTO orders (
                         id, "userId", "addressId", status, total, "paymentMethod", notes,
-                        coupon_code, discount_applied, "createdAt", "updatedAt"
+                        coupon_code, discount_applied, "scheduledFor", "createdAt", "updatedAt"
                     )
-                    VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+                    VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
                     RETURNING id
                     """,
                     user_id, address_id, status, total, payment_method, notes,
-                    coupon_code, discount_applied
+                    coupon_code, discount_applied, scheduled_for
                 )
 
             for item in items:
@@ -180,7 +180,7 @@ async def create_order(
             order = await conn.fetchrow(
                 """
                 SELECT id, "userId", "addressId", status, total, "paymentMethod", notes,
-                       coupon_code, discount_applied, "createdAt", "updatedAt"
+                       coupon_code, discount_applied, "scheduledFor", "createdAt", "updatedAt"
                 FROM orders WHERE id = $1
                 """,
                 order_id
@@ -310,7 +310,8 @@ async def get_user_orders(user_id: str) -> List[Dict[str, Any]]:
                 o.discount_applied,
                 o."createdAt",
                 o."updatedAt",
-                o."addressId"
+                o."addressId",
+                o."scheduledFor"
             FROM orders o
             WHERE o."userId" = $1
             ORDER BY o."createdAt" DESC
@@ -423,6 +424,7 @@ async def get_all_orders() -> List[Dict[str, Any]]:
                 o.discount_applied,
                 o."createdAt",
                 o."updatedAt",
+                o."scheduledFor",
                 u.id as customer_id,
                 u.name as customer_name,
                 u.email as customer_email,
@@ -561,6 +563,12 @@ async def create_product(name: str, description: Optional[str], price: float, ca
     """Crear nuevo producto"""
     conn = await get_connection()
     try:
+        # Convertir strings vacíos a None para campos opcionales
+        if description == "":
+            description = None
+        if image == "":
+            image = None
+
         product_id = await conn.fetchval(
             """
             INSERT INTO products (id, name, description, price, image, category, "isAvailable", "createdAt", "updatedAt")
@@ -574,6 +582,10 @@ async def create_product(name: str, description: Optional[str], price: float, ca
             'SELECT id, name, description, price, image, category, "isAvailable", "createdAt", "updatedAt" FROM products WHERE id = $1',
             product_id
         )
+
+        # Invalidar cache de lista de productos para que se reflejen cambios inmediatamente
+        _cache.invalidate_pattern("products:all:*")
+
         return convert_uuid_to_str(dict(product)) if product else None
     finally:
         await conn.close()
@@ -672,11 +684,19 @@ async def update_product(product_id: str, name: Optional[str] = None, descriptio
             return None
 
         # Usar valores actuales si no se proporcionan nuevos
+        # IMPORTANTE: Permitir strings vacíos para limpiar campos opcionales como image y description
         updated_name = name if name is not None else current_product['name']
         updated_description = description if description is not None else current_product['description']
+        # Si se envía string vacío para description, convertir a None
+        if updated_description == "":
+            updated_description = None
         updated_price = price if price is not None else current_product['price']
         updated_category = category if category is not None else current_product['category']
+        # Para image: permitir "" para borrar la imagen, pero si es None, mantener la actual
         updated_image = image if image is not None else current_product['image']
+        # Si se envía string vacío, convertir a None para que sea NULL en BD
+        if updated_image == "":
+            updated_image = None
         updated_available = is_available if is_available is not None else current_product['isAvailable']
 
         # Actualizar producto
@@ -690,10 +710,10 @@ async def update_product(product_id: str, name: Optional[str] = None, descriptio
             updated_name, updated_description, updated_price, updated_category, updated_image, updated_available, product_id
         )
 
-        # Invalidar caché del producto actualizado
+        # Invalidar caché del producto actualizado y la lista de productos
         cache_key = CacheKeys.product_by_id(product_id)
-        if cache_key in _cache:
-            del _cache[cache_key]
+        _cache.delete(cache_key)
+        _cache.invalidate_pattern("products:all:*")
 
         return convert_uuid_to_str(dict(product)) if product else None
     finally:

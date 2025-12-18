@@ -18,9 +18,12 @@ const OrderManagement = ({ orders = [], onStatusChange }) => {
 
   const formatDateTime = (dateString) => {
     if (!dateString) return 'N/A';
-    const d = new Date(dateString);
+    // El backend guarda en UTC sin timezone, agregamos 'Z' para que JavaScript lo interprete como UTC
+    const dateWithTz = dateString.endsWith('Z') ? dateString : dateString + 'Z';
+    const d = new Date(dateWithTz);
     if (isNaN(d.getTime())) return 'N/A';
     return d.toLocaleString('es-CO', {
+      timeZone: 'America/Bogota',
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
@@ -238,11 +241,12 @@ const OrderManagement = ({ orders = [], onStatusChange }) => {
                   )}
                 </div>
 
-                {/* ✅ Acciones: si está SCHEDULED, no forzar preparar (se libera solo cuando toque) */}
+                {/* ✅ Acciones del administrador */}
                 <div className="flex space-x-2 mt-4">
                   {statusLower !== 'delivered' && statusLower !== 'cancelled' && (
                     <>
-                      {!isScheduled && statusLower === 'pending' && (
+                      {/* PENDING: Mostrar botón Preparar (casos manuales/excepcionales) */}
+                      {statusLower === 'pending' && (
                         <button
                           onClick={() => onStatusChange(order.id, 'PREPARING')}
                           className="px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 transition-colors"
@@ -251,7 +255,28 @@ const OrderManagement = ({ orders = [], onStatusChange }) => {
                         </button>
                       )}
 
-                      {!isScheduled && statusLower === 'preparing' && (
+                      {/* CONFIRMED: Pedido validado, listo para preparar */}
+                      {statusLower === 'confirmed' && (
+                        <button
+                          onClick={() => onStatusChange(order.id, 'PREPARING')}
+                          className="px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 transition-colors"
+                        >
+                          Preparar
+                        </button>
+                      )}
+
+                      {/* SCHEDULED: Admin puede liberar manualmente cuando sea necesario */}
+                      {statusLower === 'scheduled' && (
+                        <button
+                          onClick={() => onStatusChange(order.id, 'PENDING')}
+                          className="px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 transition-colors"
+                        >
+                          Liberar para preparar
+                        </button>
+                      )}
+
+                      {/* PREPARING: Mostrar botón Listo */}
+                      {statusLower === 'preparing' && (
                         <button
                           onClick={() => onStatusChange(order.id, 'READY')}
                           className="px-3 py-1 bg-green-500 text-white text-sm rounded hover:bg-green-600 transition-colors"
@@ -260,7 +285,8 @@ const OrderManagement = ({ orders = [], onStatusChange }) => {
                         </button>
                       )}
 
-                      {!isScheduled && statusLower === 'ready' && (
+                      {/* READY: Mostrar botón Entregado */}
+                      {statusLower === 'ready' && (
                         <button
                           onClick={() => onStatusChange(order.id, 'DELIVERED')}
                           className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700 transition-colors"
@@ -269,6 +295,7 @@ const OrderManagement = ({ orders = [], onStatusChange }) => {
                         </button>
                       )}
 
+                      {/* CANCELAR: Siempre disponible excepto para entregados/cancelados */}
                       <button
                         onClick={() => onStatusChange(order.id, 'CANCELLED')}
                         className="px-3 py-1 bg-red-500 text-white text-sm rounded hover:bg-red-600 transition-colors"

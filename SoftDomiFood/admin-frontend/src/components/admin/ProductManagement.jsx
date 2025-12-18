@@ -48,13 +48,13 @@ const ProductManagement = ({ products, onAddProduct, onEditProduct, onDeleteProd
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     const productData = {
       name: formData.name,
-      description: formData.description || null,
+      description: formData.description || '',
       price: parseFloat(formData.price),
       category: formData.category,
-      image: formData.image || null,
+      image: formData.image || '',
       isAvailable: formData.isAvailable
     };
 
@@ -103,9 +103,13 @@ const ProductManagement = ({ products, onAddProduct, onEditProduct, onDeleteProd
             {products.map(product => (
               <div key={product.id} className="border border-gray-200 rounded-lg p-4">
                 <img
-                  src={product.image || 'https://placehold.co/300x200/FF6B6B/FFFFFF?text=Producto'}
+                  src={product.image ? `${product.image}?t=${product.updatedAt || Date.now()}` : 'https://placehold.co/300x200/FF6B6B/FFFFFF?text=Producto'}
                   alt={product.name}
                   className="w-full h-32 object-cover rounded-lg mb-3"
+                  onError={(e) => {
+                    e.target.onerror = null;
+                    e.target.src = 'https://placehold.co/300x200/FF6B6B/FFFFFF?text=Sin+Imagen';
+                  }}
                 />
                 <h3 className="font-semibold text-gray-800 mb-1">{product.name}</h3>
                 <p className="text-sm text-gray-600 mb-2 line-clamp-2">{product.description || 'Sin descripción'}</p>

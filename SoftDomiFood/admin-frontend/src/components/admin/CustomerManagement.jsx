@@ -16,8 +16,10 @@ const CustomerManagement = ({ customers, loading }) => {
 
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('es-ES', {
+    const dateWithTz = dateString.endsWith('Z') ? dateString : dateString + 'Z';
+    const date = new Date(dateWithTz);
+    return date.toLocaleString('es-CO', {
+      timeZone: 'America/Bogota',
       year: 'numeric',
       month: 'long',
       day: 'numeric',
@@ -61,7 +63,7 @@ const CustomerManagement = ({ customers, loading }) => {
           {customers.map((customer) => {
             const isExpanded = expandedCustomers.has(customer.id);
             const addresses = customer.addresses || [];
-            
+
             return (
               <div
                 key={customer.id}
@@ -182,4 +184,3 @@ const CustomerManagement = ({ customers, loading }) => {
 };
 
 export default CustomerManagement;
-

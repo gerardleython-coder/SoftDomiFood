@@ -10,7 +10,7 @@ TEST_DATABASE_URL = os.getenv(
     "ASYNC_PG_URL",
     os.getenv(
         "TEST_DATABASE_URL",
-        "postgresql://softdomifood_user:softdomifood_pass@localhost:5432/softdomifood_test_db"
+        "postgresql://softdomifood_user:softdomifood_pass@postgres:5432/softdomifood_test_db"
     )
 )
 
@@ -18,7 +18,7 @@ async def create_test_database():
     """Crear base de datos de pruebas si no existe"""
     # Conectar a postgres default para crear DB
     conn = await asyncpg.connect(
-        "postgresql://softdomifood_user:softdomifood_pass@localhost:5432/postgres"
+        "postgresql://softdomifood_user:softdomifood_pass@postgres:5432/postgres"
     )
     try:
         # Verificar si existe
@@ -34,7 +34,7 @@ async def create_test_database():
 async def drop_test_database():
     """Eliminar base de datos de pruebas"""
     conn = await asyncpg.connect(
-        "postgresql://softdomifood_user:softdomifood_pass@localhost:5432/postgres"
+        "postgresql://softdomifood_user:softdomifood_pass@postgres:5432/postgres"
     )
     try:
         # Terminar conexiones activas

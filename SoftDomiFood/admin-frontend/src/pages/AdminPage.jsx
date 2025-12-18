@@ -22,12 +22,12 @@ const AdminPage = ({ switchToClient, adminUser, onLogout, toast }) => {
   // Load real data from API
   useEffect(() => {
     loadData();
-    
+
     // Actualizar datos cada 5 segundos para mantener estadísticas actualizadas
     const interval = setInterval(() => {
       loadOrders(); // Recargar pedidos actualiza las estadísticas
     }, 5000);
-    
+
     return () => clearInterval(interval);
   }, []);
 
@@ -103,46 +103,48 @@ const AdminPage = ({ switchToClient, adminUser, onLogout, toast }) => {
       return;
     }
 
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    
+    // Obtener fecha actual en Colombia (UTC-5)
+    const nowUTC = new Date();
+    const nowColombia = new Date(nowUTC.toLocaleString('en-US', { timeZone: 'America/Bogota' }));
+    const todayColombia = new Date(nowColombia.getFullYear(), nowColombia.getMonth(), nowColombia.getDate());
+
+    console.log('Today Colombia:', todayColombia.toISOString());
+
     // Filtrar solo pedidos del día actual y que no estén cancelados
     const todayOrders = ordersList.filter(order => {
       if (!order.createdAt) {
         console.warn('Order without createdAt:', order.id);
         return false;
       }
-      
+
       try {
-        // Manejar diferentes formatos de fecha
-        let orderDate;
-        if (typeof order.createdAt === 'string') {
-          orderDate = new Date(order.createdAt);
-        } else if (order.createdAt instanceof Date) {
-          orderDate = order.createdAt;
-        } else {
-          console.warn('Invalid date format:', order.createdAt);
-          return false;
-        }
-        
+        // El backend guarda en UTC sin timezone, agregamos 'Z' para que JavaScript lo interprete como UTC
+        const createdAtString = typeof order.createdAt === 'string' ? order.createdAt : order.createdAt.toString();
+        const dateWithTz = createdAtString.endsWith('Z') ? createdAtString : createdAtString + 'Z';
+        const orderDate = new Date(dateWithTz);
+
         // Verificar que la fecha sea válida
         if (isNaN(orderDate.getTime())) {
           console.warn('Invalid date:', order.createdAt);
           return false;
         }
-        
-        // Comparar solo la fecha (sin hora)
-        const orderDateOnly = new Date(orderDate.getFullYear(), orderDate.getMonth(), orderDate.getDate());
-        const isToday = orderDateOnly.getTime() === today.getTime();
+
+        // Convertir fecha del pedido a zona horaria de Colombia
+        const orderDateColombia = new Date(orderDate.toLocaleString('en-US', { timeZone: 'America/Bogota' }));
+        const orderDateOnly = new Date(orderDateColombia.getFullYear(), orderDateColombia.getMonth(), orderDateColombia.getDate());
+
+        const isToday = orderDateOnly.getTime() === todayColombia.getTime();
         const isNotCancelled = order.status?.toLowerCase() !== 'cancelled';
-        
+
+        console.log('Order:', order.id.substring(0, 8), 'Created:', orderDateOnly.toISOString(), 'IsToday:', isToday, 'Status:', order.status);
+
         return isToday && isNotCancelled;
       } catch (error) {
         console.error('Error processing order date:', error, order);
         return false;
       }
     });
-    
+
     // Calcular ingresos solo de pedidos no cancelados del día
     const todayRevenue = todayOrders.reduce((sum, order) => {
       const total = parseFloat(order.total) || 0;
@@ -152,7 +154,8 @@ const AdminPage = ({ switchToClient, adminUser, onLogout, toast }) => {
     console.log('Stats calculated:', {
       totalOrders: ordersList.length,
       todayOrders: todayOrders.length,
-      todayRevenue: todayRevenue
+      todayRevenue: todayRevenue,
+      filteredOrders: todayOrders.map(o => ({ id: o.id.substring(0, 8), total: o.total, status: o.status }))
     });
 
     setStats({

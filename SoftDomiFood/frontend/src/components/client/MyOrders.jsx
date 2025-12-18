@@ -86,8 +86,11 @@ const MyOrders = ({ user, toast }) => {
 
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('es-ES', {
+    // El backend guarda en UTC sin timezone, agregamos 'Z' para que JavaScript lo interprete como UTC
+    const dateWithTz = dateString.endsWith('Z') ? dateString : dateString + 'Z';
+    const date = new Date(dateWithTz);
+    return date.toLocaleString('es-CO', {
+      timeZone: 'America/Bogota',
       year: 'numeric',
       month: 'long',
       day: 'numeric',

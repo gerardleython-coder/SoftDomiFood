@@ -36,7 +36,7 @@ const CouponManagement = ({ coupons, onAddCoupon, onEditCoupon, onDeleteCoupon }
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     // Validaciones básicas
     if (!formData.code.trim()) {
       alert('El código del cupón es obligatorio');
@@ -105,7 +105,9 @@ const CouponManagement = ({ coupons, onAddCoupon, onEditCoupon, onDeleteCoupon }
   const formatDate = (dateString) => {
     if (!dateString) return 'Sin límite';
     try {
-      return new Date(dateString).toLocaleDateString('es-ES', {
+      const dateWithTz = dateString.endsWith('Z') ? dateString : dateString + 'Z';
+      return new Date(dateWithTz).toLocaleDateString('es-ES', {
+        timeZone: 'America/Bogota',
         year: 'numeric',
         month: 'short',
         day: 'numeric'
@@ -361,7 +363,7 @@ const CouponManagement = ({ coupons, onAddCoupon, onEditCoupon, onDeleteCoupon }
               coupons.map((coupon) => {
                 const discountType = coupon.discount_type || coupon.discountType;
                 const isActive = coupon.is_active !== undefined ? coupon.is_active : coupon.isActive;
-                
+
                 return (
                   <tr key={coupon.id} className="hover:bg-gray-50">
                     <td className="px-4 py-4">

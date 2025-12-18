@@ -11,9 +11,9 @@ from httpx import AsyncClient
 from fastapi import FastAPI
 
 # Configurar variables de entorno para pruebas
-os.environ["DATABASE_URL"] = "postgresql+asyncpg://softdomifood_user:softdomifood_pass@localhost:5432/softdomifood_test_db"
-os.environ["ASYNC_PG_URL"] = "postgresql://softdomifood_user:softdomifood_pass@localhost:5432/softdomifood_test_db"
-os.environ["RABBITMQ_URL"] = "amqp://admin:admin123@localhost:5672/"
+os.environ["DATABASE_URL"] = "postgresql+asyncpg://softdomifood_user:softdomifood_pass@postgres:5432/softdomifood_test_db"
+os.environ["ASYNC_PG_URL"] = "postgresql://softdomifood_user:softdomifood_pass@postgres:5432/softdomifood_test_db"
+os.environ["RABBITMQ_URL"] = "amqp://admin:admin123@rabbitmq:5672/"
 os.environ["JWT_SECRET"] = "test-secret-key-only-for-testing-do-not-use-in-production"
 
 from tests.fixtures.database import (

@@ -24,19 +24,19 @@ interface OrderMessage {
 
 async function processOrder(message: OrderMessage) {
   console.log(`📦 Procesando pedido: ${message.orderId}`);
-  
+
   try {
-    // Simular tiempo de procesamiento/preparación (5 segundos)
-    console.log(`⏳ Preparando pedido ${message.orderId}...`);
-    await new Promise(resolve => setTimeout(resolve, 5000));
-    
-    // Actualizar estado del pedido a PREPARING
+    // Simular tiempo de procesamiento/confirmación (10 segundos)
+    console.log(`⏳ Validando y confirmando pedido ${message.orderId}...`);
+    await new Promise(resolve => setTimeout(resolve, 10000));
+
+    // Actualizar estado del pedido a CONFIRMED (listo para que admin prepare)
     await prisma.order.update({
       where: { id: message.orderId },
-      data: { status: 'PREPARING' }
+      data: { status: 'CONFIRMED' }
     });
-    
-    console.log(`✅ Pedido ${message.orderId} actualizado a PREPARING`);
+
+    console.log(`✅ Pedido ${message.orderId} confirmado automáticamente. Admin puede iniciar preparación.`);
   } catch (error: any) {
     console.error(`❌ Error procesando pedido ${message.orderId}:`, error);
     throw error;
@@ -53,10 +53,10 @@ async function startConsumer() {
     // Ocultar contraseña en logs
     const safeUrl = RABBITMQ_URL.replace(/:[^:@]+@/, ':****@');
     console.log(`📍 URL de conexión: ${safeUrl}`);
-    
+
     connection = await amqp.connect(RABBITMQ_URL);
     channel = await connection.createChannel();
-    
+
     // Manejar errores de conexión
     connection.on('error', (err) => {
       console.error('❌ Error de conexión RabbitMQ:', err);
@@ -67,7 +67,7 @@ async function startConsumer() {
         setTimeout(startConsumer, 5000);
       }
     });
-    
+
     connection.on('close', () => {
       console.warn('⚠️  Conexión RabbitMQ cerrada');
       connection = null;
@@ -77,26 +77,26 @@ async function startConsumer() {
         setTimeout(startConsumer, 5000);
       }
     });
-    
+
     // Asegurar que la cola existe
     await channel.assertQueue(QUEUE_NAME, { durable: true });
     console.log(`✅ Conectado a RabbitMQ. Esperando mensajes en cola: ${QUEUE_NAME}`);
-    
+
     // Configurar prefetch (procesar un mensaje a la vez)
     channel.prefetch(1);
-    
+
     // Consumir mensajes
     channel.consume(QUEUE_NAME, async (msg) => {
       if (!msg || !channel) return;
-      
+
       isProcessing = true;
       try {
         const orderData: OrderMessage = JSON.parse(msg.content.toString());
         console.log(`📨 Mensaje recibido: Pedido ${orderData.orderId}`);
-        
+
         // Procesar pedido
         await processOrder(orderData);
-        
+
         // Confirmar procesamiento
         channel.ack(msg);
         console.log(`✅ Mensaje procesado y confirmado: ${orderData.orderId}`);
@@ -114,9 +114,9 @@ async function startConsumer() {
     }, {
       noAck: false // Requerir confirmación manual
     });
-    
+
     console.log('👂 Worker escuchando mensajes...');
-    
+
     // Manejar cierre graceful
     process.on('SIGINT', async () => {
       console.log('🛑 Cerrando conexión...');
@@ -138,7 +138,7 @@ async function startConsumer() {
       await prisma.$disconnect();
       process.exit(0);
     });
-    
+
     process.on('SIGTERM', async () => {
       console.log('🛑 Recibida señal SIGTERM, cerrando...');
       isProcessing = true;
@@ -159,7 +159,7 @@ async function startConsumer() {
       await prisma.$disconnect();
       process.exit(0);
     });
-    
+
   } catch (error: any) {
     console.error('❌ Error en consumer:', error);
     const safeUrl = RABBITMQ_URL.replace(/:[^:@]+@/, ':****@');
@@ -178,4 +178,3 @@ async function startConsumer() {
 
 // Iniciar consumer
 startConsumer();
-

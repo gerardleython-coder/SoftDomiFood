@@ -50,8 +50,10 @@ const ProductReviews = ({ productId }) => {
 
   const formatDate = (dateString) => {
     if (!dateString) return '';
-    const date = new Date(dateString);
+    const dateWithTz = dateString.endsWith('Z') ? dateString : dateString + 'Z';
+    const date = new Date(dateWithTz);
     return date.toLocaleDateString('es-ES', {
+      timeZone: 'America/Bogota',
       year: 'numeric',
       month: 'long',
       day: 'numeric',
